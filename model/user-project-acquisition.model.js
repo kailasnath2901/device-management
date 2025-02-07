@@ -13,15 +13,25 @@ const UserProjectAcquisition = sequelize.define('UserProjectAcquisition', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: User,
+      model: 'user',
       key: 'id'
     }
+  },
+  firmwareVersion: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: '1.0.0' // Default firmware version
+  },
+  hasRemovalOccurred: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
   },
   projectId: {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: Project,
+      model: 'projects',
       key: 'id'
     }
   }
@@ -30,8 +40,15 @@ const UserProjectAcquisition = sequelize.define('UserProjectAcquisition', {
   timestamps: true
 });
 
-// Associations
-UserProjectAcquisition.belongsTo(User, { foreignKey: 'userId' });
-UserProjectAcquisition.belongsTo(Project, { foreignKey: 'projectId' });
+UserProjectAcquisition.belongsTo(User, { 
+  foreignKey: 'userId', 
+  as: 'user'  // Changed from "project" to "user"
+});
+
+UserProjectAcquisition.belongsTo(Project, { 
+  foreignKey: 'projectId', 
+  as: 'project',
+  onDelete: 'CASCADE' // Add this
+});
 
 module.exports = UserProjectAcquisition;

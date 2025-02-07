@@ -39,5 +39,7 @@ const ProjectFile = sequelize.define('ProjectFile', {
     tableName: 'project_files',
     timestamps: true
   });
+
+  
   
   module.exports = ProjectFile;

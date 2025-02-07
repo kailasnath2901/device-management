@@ -33,12 +33,21 @@ const Project = sequelize.define(
     },
     maxAcquisitions: {
       type: DataTypes.INTEGER,
-      defaultValue: 4,
+      defaultValue: 5,
     },
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    version: {
+      type: DataTypes.INTEGER,
+      defaultValue: 1,
+      allowNull: false
+    },
+    lastUpdated: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    }
   },
   {
     tableName: "projects",
@@ -48,13 +57,13 @@ const Project = sequelize.define(
 
 Project.hasMany(ProjectFile, {
   foreignKey: "projectId",
-  as: "files",
-  onDelete: "CASCADE", // Add this option
+  as: "files",  // Changed from "acquisitions" to "files"
+  onDelete: "CASCADE"
 });
 
 ProjectFile.belongsTo(Project, {
   foreignKey: "projectId",
-  as: "project",
+  as: "project"
 });
 
 

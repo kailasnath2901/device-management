@@ -3,37 +3,28 @@ const router = express.Router();
 const deviceController = require('../controllers/user-device.controller');
 const { authenticate , authorizeRoles} = require('../middleware/auth');
 
-router.post('/addDevices', 
+router.post('/admin/create-device', 
   authenticate, 
-  deviceController.addDevice
+  authorizeRoles('admin', 'super_admin'), 
+  deviceController.createDeviceByAdmin
 );
 
-router.post('/admin/assign-device', 
-    authenticate, 
-    authorizeRoles('admin' , 'super_admin'), 
-    deviceController.assignDeviceToUser
-  );
-
-router.get('/getDevices', 
+router.get('/getdevices', 
   authenticate, 
-  deviceController.getUserDevices
+  deviceController.getDevices
 );
 
-router.patch('/devices/:deviceId/firmware', 
-  authenticate, 
-  authorizeRoles('admin', 'super_admin'),  // Add admin authorization
-  deviceController.updateDeviceFirmware
-);
 
-router.patch('/devices/:deviceId', 
+router.patch('/Updatedevice/:deviceId', 
   authenticate, 
+  authorizeRoles('admin', 'super_admin'), 
   deviceController.updateDevice
 );
 
-router.get('/devices/all', 
+router.delete('/admin/devices/:deviceId', 
   authenticate, 
   authorizeRoles('admin', 'super_admin'), 
-  deviceController.getAllDevices
+  deviceController.deleteDeviceByAdmin
 );
 
 module.exports = router;

@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const ProjectFile = require("../model/project-files.model");
 const Project = require("../model/project.model");
-const UserProjectAcquisition = require("../model/user-project-acquisition.model")
+const UserProjectAcquisition = require("../model/user-project-acquisition.model");
 const mime = require("mime-types");
 const FileDownloadLog = require('../model/filedownloadlog');
 
@@ -160,11 +160,11 @@ class ProjectController {
   }
 
 
+
   async acquireProject(req, res) {
     try {
       const { projectId } = req.params;
       
-      // Check if user is authenticated
       if (!req.user || !req.user.id) {
         return res.status(401).json({
           success: false,
@@ -172,43 +172,44 @@ class ProjectController {
         });
       }
   
-      const userId = req.user.id;
-  
-      // Check if project exists
-      const project = await Project.findByPk(projectId);
-      if (!project) {
-        return res.status(404).json({
-          success: false,
-          message: 'Project not found'
-        });
-      }
-  
-      // Check user's current project acquisitions
-      const currentAcquisitions = await UserProjectAcquisition.count({
-        where: { userId }
-      });
-  
-      // Check if user has reached max acquisitions
-      if (currentAcquisitions >= 4) {
-        return res.status(400).json({
-          success: false,
-          message: 'Maximum project acquisitions reached. Delete a project first.'
-        });
-      }
-  
-      // Create project acquisition
-      await UserProjectAcquisition.create({ userId, projectId });
+      const result = await ProjectService.acquireProject(req.user.id, projectId);
   
       res.json({
         success: true,
-        message: 'Project acquired successfully'
+        message: 'Project acquired successfully',
+        firmwareVersion: result.firmwareVersion
       });
     } catch (error) {
-      console.error('Acquire Project Error:', error); // Log the error for debugging
+      console.error('Acquire Project Error:', error);
       res.status(500).json({
         success: false,
-        message: 'Internal server error',
-        errorDetails: error.message // Optionally include details for debugging
+        message: error.message
+      });
+    }
+  }
+
+
+  async getAcquiredProjects(req, res) {
+    try {
+      const userId = req.user.id;
+      const { page = 1, limit = 10 } = req.query;
+  
+      const result = await ProjectService.getAcquiredProjects(userId, {
+        page: parseInt(page),
+        limit: parseInt(limit)
+      });
+  
+      res.json({
+        success: true,
+        currentFirmwareVersion: result.currentFirmwareVersion, // Include the shared version
+        projects: result.projects,
+        totalAcquiredProjects: result.totalProjectsAcquired
+      });
+    } catch (error) {
+      console.error('Get Acquired Projects Error:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message
       });
     }
   }
@@ -217,63 +218,25 @@ class ProjectController {
   async removeAcquiredProject(req, res) {
     try {
       const { projectId } = req.params;
-      const userId = req.user.id;
-  
-      // Remove project acquisition
-      const result = await UserProjectAcquisition.destroy({
-        where: { 
-          userId, 
-          projectId 
-        }
-      });
-  
-      if (result === 0) {
-        return res.status(404).json({
+      
+      if (!req.user || !req.user.id) {
+        return res.status(401).json({
           success: false,
-          message: 'Project acquisition not found'
+          message: 'User not authenticated'
         });
       }
-  
-      res.json({
-        success: true,
-        message: 'Project removed from acquisitions'
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error.message
-      });
-    }
-  }
 
-  async getAcquiredProjects(req, res) {
-    try {
-      const userId = req.user.id;
-  
-      const acquiredProjects = await UserProjectAcquisition.findAll({
-        where: { userId },
-        include: [{
-          model: Project,
-          as: 'acquiredBy', // Use the correct alias here
-          attributes: ['id', 'name', 'description', 'projectType', 'youtubeLink'],
-          include: [{
-            model: ProjectFile,
-            as: 'files',
-            attributes: ['id', 'filename', 'fileType', 'fileSize']
-          }]
-        }]
-      });
-  
+      const result = await ProjectService.removeAcquiredProject(req.user.id, projectId);
+
       res.json({
         success: true,
-        projects: acquiredProjects.map(acquisition => ({
-          ...acquisition.acquiredBy.toJSON(), // Use the correct reference here
-          acquiredAt: acquisition.createdAt
-        })),
-        totalAcquiredProjects: acquiredProjects.length
+        message: 'Project removed successfully',
+        firmwareVersion: result.currentFirmwareVersion,
+        remainingProjects: result.remainingProjects
       });
+      
     } catch (error) {
-      console.error('Get Acquired Projects Error:', error); // Log for debugging
+      console.error('Remove Project Error:', error);
       res.status(500).json({
         success: false,
         message: error.message

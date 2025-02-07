@@ -137,7 +137,7 @@ class UserService {
         model: Project,
         include: [{
           model: ProjectFile,
-          as: 'files'  // Add this alias
+          as: 'files'
         }],
         attributes: { 
           include: [
@@ -152,13 +152,29 @@ class UserService {
       order: [['createdAt', 'DESC']]
     });
   
+    // Calculate latest firmware version
+    const latestAcquisition = await UserProjectAcquisition.findOne({
+      where: { userId },
+      order: [['firmwareVersion', 'DESC']]
+    });
+  
     return {
       success: true,
-      projects: acquisitions.map(acquisition => acquisition.Project),
+      projects: acquisitions.map(acquisition => ({
+        ...acquisition.Project.toJSON(),
+        firmwareVersion: acquisition.firmwareVersion,
+        acquiredAt: acquisition.createdAt
+      })),
       totalProjectsAcquired: count,
       totalPages: Math.ceil(count / limit),
-      currentPage: page
+      currentPage: page,
+      currentFirmwareVersion: latestAcquisition?.firmwareVersion || '1.0.0'
     };
+  }
+
+  incrementFirmwareVersion(version) {
+    const versionNum = parseFloat(version);
+    return (versionNum + 0.1).toFixed(1);
   }
 }
 
