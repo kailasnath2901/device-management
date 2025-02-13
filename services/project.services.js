@@ -6,14 +6,16 @@ const sequelize = require("../config/sequelize");
 const path = require("path");
 
 class ProjectService {
+
   async createProject(userId, projectData, files) {
+    // Set initial version as 1 for new projects
     // Set initial version as 1 for new projects
     const project = await Project.create({
       ...projectData,
       version: 1, // Add initial version
       userId,
     });
-
+  
     if (files && files.length > 0) {
       const projectFiles = files.map((file) => ({
         projectId: project.id,
@@ -23,10 +25,10 @@ class ProjectService {
         filePath: file.path,
         mimetype: file.mimetype,
       }));
-
+  
       await ProjectFile.bulkCreate(projectFiles);
     }
-
+  
     return Project.findByPk(project.id, {
       include: [
         {
