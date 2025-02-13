@@ -5,14 +5,7 @@ const env = require("dotenv");
 const sequelize = require("./config/sequelize");
 const cors = require("cors");
 env.config();
-app.use(cors());
 
-app.use(
-  cors({
-    origin: "http://192.168.10.124:8010", // Change this to your frontend URLmethods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
 
 app.use(express.json());
 app.use(morgan("dev"));
@@ -26,7 +19,7 @@ app.get("/test", (req, res) => {
   res.status(200).send("<h1> Node js project created with Sequelize </h1>");
 });
 
-const port = process.env.PORT;
+const port = process.env.PORT || 8010;
 
 const startServer = async () => {
   try {
