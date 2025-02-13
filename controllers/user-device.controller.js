@@ -1,35 +1,11 @@
 const DeviceService = require('../services/user-device.service');
 
 class DeviceController {
-  async addDevice(req, res) {
+  async createDeviceByAdmin(req, res) {
     try {
-        const { userId } = req.params;
-        const device = await DeviceService.addDevice(
-          userId, 
-          req.body
-        );
-        res.status(201).json({
-          success: true,
-          device
-        });
-      } catch (error) {
-        res.status(400).json({
-          success: false,
-          message: error.message
-        });
-      }
-  }
-
-  async assignDeviceToUser(req, res) {
-    try {
-      const { userId, deviceName, deviceType, serialNumber } = req.body;
-  
-      const device = await DeviceService.addDevice(userId, {
-        deviceName,
-        deviceType,
-        serialNumber
-      });
-  
+      const deviceData = req.body;
+      const device = await DeviceService.createDeviceByAdmin(deviceData);
+      
       res.status(201).json({
         success: true,
         device
@@ -42,56 +18,13 @@ class DeviceController {
     }
   }
 
-  async getUserDevices(req, res) {
+  async getDevices(req, res) {
     try {
-      const devices = await DeviceService.getUserDevices(req.user.id);
-      res.json({
-        success: true,
-        devices
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error.message
-      });
-    }
-  }
+      const { page, limit, search, deviceType } = req.query;
 
-  async updateDeviceFirmware(req, res) {
-    try {
-      const { deviceId } = req.params;
-      const { firmwareVersion } = req.body;
-  
-      const device = await DeviceService.updateDeviceFirmware(
-        deviceId,
-        firmwareVersion,
-        req.user.role  // Pass the user role to the service
-      );
-  
-      res.json({
-        success: true,
-        device
-      });
-    } catch (error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-    }
-  }
-
-  async getAllDevices(req, res) {
-    try {
-      const { 
-        page = 1, 
-        limit = 10, 
-        search, 
-        deviceType 
-      } = req.query;
-      
-      const devices = await DeviceService.getAllDevices({
-        page: parseInt(page),
-        limit: parseInt(limit),
+      const devices = await DeviceService.getDevices({
+        page,
+        limit,
         search,
         deviceType
       });
@@ -107,18 +40,36 @@ class DeviceController {
       });
     }
   }
+
   async updateDevice(req, res) {
     try {
       const { deviceId } = req.params;
-      const device = await DeviceService.updateDevice(
-        deviceId, 
-        req.user.id, 
-        req.body
-      );
+      const updateData = req.body;
+      
+      const device = await DeviceService.updateDevice(deviceId, updateData);
 
       res.json({
         success: true,
         device
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+
+
+  async deleteDeviceByAdmin(req, res) {
+    try {
+      const { deviceId } = req.params;
+      await DeviceService.deleteDeviceByAdmin(deviceId);
+      
+      res.json({
+        success: true,
+        message: "Device deleted successfully"
       });
     } catch (error) {
       res.status(400).json({

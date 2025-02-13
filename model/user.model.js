@@ -41,7 +41,8 @@ const User = sequelize.define(
   {
     tableName: "user",
     timestamps: true,
-  }
+  },
+  
 );
 
 User.hasMany(Device, {

@@ -21,19 +21,22 @@ const storage = multer.diskStorage({
 
 const fileFilter = (req, file, cb) => {
   const allowedTypes = [
-    "image/jpeg",
-    "image/png",
-    "application/pdf",
-    "application/zip",
-    "text/plain",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "text/csv",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    // ... previous allowed types
   ];
 
-  if (allowedTypes.includes(file.mimetype)) {
+  const allowedExtensions = [
+    '.py', '.txt', '.pdf', '.zip', 
+    '.jpg', '.jpeg', '.png', 
+    '.doc', '.docx', '.csv', 
+    '.xls', '.xlsx'
+  ];
+
+  const fileExtension = path.extname(file.originalname).toLowerCase();
+
+  if (
+    allowedTypes.includes(file.mimetype) || 
+    allowedExtensions.includes(fileExtension)
+  ) {
     cb(null, true);
   } else {
     cb(new Error("Invalid file type"), false);

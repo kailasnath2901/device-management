@@ -1,15 +1,12 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/sequelize');
 
+
 const Device = sequelize.define('Device', {
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
     autoIncrement: true
-  },
-  userId: {
-    type: DataTypes.INTEGER,
-    allowNull: false
   },
   deviceName: {
     type: DataTypes.STRING,
@@ -21,6 +18,7 @@ const Device = sequelize.define('Device', {
   },
   serialNumber: {
     type: DataTypes.STRING,
+    allowNull: false,
     unique: true
   },
   firmwareVersion: {
@@ -28,19 +26,12 @@ const Device = sequelize.define('Device', {
     defaultValue: '1.0.0'
   },
   lastUpdated: {
-    type: DataTypes.DATE
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
 }, {
-  tableName: 'user_devices',
+  tableName: 'devices',
   timestamps: true
 });
-
-Device.associate = (models) => {
-  Device.belongsTo(models.User, {
-    foreignKey: 'userId',
-    as: 'user'
-  });
-};
-
 
 module.exports = Device;

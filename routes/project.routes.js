@@ -13,6 +13,12 @@ router.post(
   projectController.createProject
 );
 
+// router.patch('/projects/:projectId/firmware', 
+//   authenticate, 
+//   authorizeRoles('admin', 'super_admin'),
+//   projectController.updateProjectFirmware
+// );
+
 router.get("/getprojects", authenticate, projectController.getUserProjects);
 
 router.delete('/deleteProject/:projectId', authenticate, authorizeRoles('admin', 'super_admin'), projectController.deleteProject);
