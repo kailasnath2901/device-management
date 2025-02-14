@@ -6,7 +6,6 @@ const sequelize = require("./config/sequelize");
 const cors = require("cors");
 env.config();
 
-
 app.use(express.json());
 app.use(morgan("dev"));
 
@@ -29,7 +28,7 @@ const startServer = async () => {
 
     console.log("Connected to database");
 
-    app.listen(port, () => {
+    app.listen(port, "0.0.0.0", () => {
       console.log(`Server is running on port ${port}`);
     });
   } catch (error) {
