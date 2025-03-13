@@ -9,7 +9,10 @@ router.post(
   "/createProject",
   authenticate,
   authorizeRoles('admin', 'super_admin'),
-  upload.array("projectFiles", 5),
+  upload.fields([
+    { name: 'image', maxCount: 1 },
+    { name: 'files', maxCount: 5 }
+  ]),
   projectController.createProject
 );
 

@@ -1,3 +1,4 @@
+// model/project.model.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/sequelize");
 const ProjectFile = require("../model/project-files.model");
@@ -25,6 +26,9 @@ const Project = sequelize.define(
       validate: {
         isUrl: true,
       },
+    },
+    imageUrl: {
+      type: DataTypes.STRING,
     },
     projectType: {
       type: DataTypes.ENUM("free", "paid"),
@@ -57,7 +61,7 @@ const Project = sequelize.define(
 
 Project.hasMany(ProjectFile, {
   foreignKey: "projectId",
-  as: "files",  // Changed from "acquisitions" to "files"
+  as: "files",
   onDelete: "CASCADE"
 });
 
@@ -65,6 +69,5 @@ ProjectFile.belongsTo(Project, {
   foreignKey: "projectId",
   as: "project"
 });
-
 
 module.exports = Project;

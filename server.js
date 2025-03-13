@@ -5,9 +5,14 @@ const env = require("dotenv");
 const sequelize = require("./config/sequelize");
 const cors = require("cors");
 env.config();
+const path = require('path');
+const fs = require('fs');
 
 app.use(express.json());
 app.use(morgan("dev"));
+
+// Add this right after your other middleware (app.use statements)
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.use("/api/user", require("./routes/user.routes"));
 app.use("/api/projects", require("./routes/project.routes"));

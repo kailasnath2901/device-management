@@ -8,30 +8,39 @@ const mime = require("mime-types");
 const FileDownloadLog = require('../model/filedownloadlog');
 
 class ProjectController {
+
   async createProject(req, res) {
     try {
       const { name, description, youtubeLink } = req.body;
-      const files = req.files;
-
-      if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
-        return res.status(403).json({
-          success: false,
-          message: 'Unauthorized. Only admins can delete projects.'
-        });
+      let projectData = { name, description, youtubeLink };
+      let files = [];
+      
+      // Check if image was uploaded
+      if (req.files && req.files.image && req.files.image.length > 0) {
+        const imageFile = req.files.image[0];
+        projectData.imageUrl = `/images/projects/${imageFile.originalname}`;
+        console.log(`Set project image URL: ${projectData.imageUrl}`);
       }
-
+      
+      // Add project files if any
+      if (req.files && req.files.files) {
+        files = req.files.files;
+      }
+  
+      // Create the project with ProjectService
       const project = await ProjectService.createProject(
         req.user.id,
-        { name, description, youtubeLink },
+        projectData,
         files
       );
-
+  
       res.status(201).json({
         success: true,
         message: "Project created successfully",
         project,
       });
     } catch (error) {
+      console.error('Error creating project:', error);
       res.status(400).json({
         success: false,
         message: error.message,
