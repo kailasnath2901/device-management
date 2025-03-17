@@ -13,11 +13,14 @@ app.use(morgan("dev"));
 
 // Add this right after your other middleware (app.use statements)
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/firmware', express.static(path.join(__dirname, 'uploads/firmware')));
 
 app.use("/api/user", require("./routes/user.routes"));
 app.use("/api/projects", require("./routes/project.routes"));
 app.use("/api/user-devices", require("./routes/user-device.routes"));
 // app.use('/api/admin', require('./routes/admin.routes'));
+app.use("/api/firmware", require("./routes/fileFirmware.routes"));
+
 
 app.get("/test", (req, res) => {
   res.status(200).send("<h1> Node js project created with Sequelize </h1>");
