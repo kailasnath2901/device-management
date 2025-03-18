@@ -6,10 +6,10 @@ const { authenticate } = require("../middleware/auth");
 const path = require("path");
 const fs = require('fs');
 const controllerPath = path.join(__dirname, '../controllers/file-firmware.controller.js');
-console.log('Controller exists:', fs.existsSync(controllerPath));
-// Upload firmware (restricted to admins)
+// console.log('Controller exists:', fs.existsSync(controllerPath));
+// // Upload firmware (restricted to admins)
 
-console.log("routeee",firmwareController.uploadFirmware)
+// console.log("routeee",firmwareController.uploadFirmware)
 router.post(
   "/upload", 
   authenticate, 
