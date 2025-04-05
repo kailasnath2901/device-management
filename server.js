@@ -14,7 +14,7 @@ app.use(morgan("dev"));
 // Add this right after your other middleware (app.use statements)
 app.use(
   cors({
-    origin: ["http://64.227.138.175:8010", "http://192.168.10.124:8010", "http://localhost:3000","https://api.roboninjaz.com","https://roboninjaz.com"],
+    origin: ["http://64.227.138.175:8010", "http://192.168.10.124:8010", "http://localhost:3000","https://api.roboninjaz.com","https:// .com"],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true

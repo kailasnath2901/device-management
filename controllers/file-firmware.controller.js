@@ -3,11 +3,12 @@ const fs = require("fs");
 const path = require("path");
 const { Op } = require("sequelize");
 
-// Upload firmware file
+// Upload multiple firmware files
 exports.uploadFirmware = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "No file uploaded" });
+    // Check if we have files
+    if (!req.files || Object.keys(req.files).length === 0) {
+      return res.status(400).json({ success: false, message: "No files uploaded" });
     }
 
     const { version, description, deviceType } = req.body;
@@ -22,8 +23,8 @@ exports.uploadFirmware = async (req, res) => {
     });
 
     if (existingFirmware) {
-      // Don't overwrite - create a new entry
-      console.log(`Firmware version ${version} already exists, creating new entry`);
+      // Don't overwrite - we'll create new entries
+      console.log(`Firmware version ${version} already exists, creating new entries`);
     }
 
     // If this is the first firmware or marked as latest, update all others to not be latest
@@ -31,26 +32,41 @@ exports.uploadFirmware = async (req, res) => {
       await Firmware.update({ isLatest: false }, { where: { isLatest: true } });
     }
 
-    // Create new firmware entry
-    const firmware = await Firmware.create({
-      version,
-      fileName: req.file.filename,
-      filePath: req.file.path,
-      isLatest: req.body.isLatest === 'true' ? true : false,
-      description: description || null,
-      fileSize: req.file.size,
-      deviceType: deviceType || null,
+    // Get all uploaded files (from all fields)
+    let allFiles = [];
+    Object.keys(req.files).forEach(fieldName => {
+      allFiles = [...allFiles, ...req.files[fieldName]];
     });
 
-    return res.status(201).json({
-      success: true,
-      message: "Firmware uploaded successfully",
-      data: {
+    // Create firmware entries for each file
+    const firmwareEntries = [];
+    for (const file of allFiles) {
+      // Create new firmware entry
+      const firmware = await Firmware.create({
+        version,
+        fileName: file.originalname,
+        filePath: file.path,
+        extractPath: file.isExtracted ? file.extractPath : null,
+        isLatest: req.body.isLatest === 'true' ? true : false,
+        description: description || null,
+        fileSize: file.size,
+        deviceType: deviceType || null,
+        isZipExtracted: file.isExtracted || false
+      });
+      
+      firmwareEntries.push({
         id: firmware.id,
         version: firmware.version,
         fileName: firmware.fileName,
         uploadedAt: firmware.uploadedAt,
-      }
+        isZipExtracted: firmware.isZipExtracted
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: `${firmwareEntries.length} firmware files uploaded successfully`,
+      data: firmwareEntries
     });
   } catch (error) {
     console.error("Error uploading firmware:", error);
@@ -62,7 +78,7 @@ exports.uploadFirmware = async (req, res) => {
 exports.getAllFirmware = async (req, res) => {
   try {
     const firmware = await Firmware.findAll({
-      attributes: ['id', 'version', 'fileName', 'uploadedAt', 'isLatest', 'description', 'deviceType'],
+      attributes: ['id', 'version', 'fileName', 'uploadedAt', 'isLatest', 'description', 'deviceType', 'isZipExtracted', 'extractPath'],
       order: [['version', 'DESC']]
     });
 
@@ -86,12 +102,12 @@ exports.getLatestFirmware = async (req, res) => {
       whereClause.deviceType = deviceType;
     }
     
-    const latestFirmware = await Firmware.findOne({
+    const latestFirmware = await Firmware.findAll({
       where: whereClause,
-      attributes: ['id', 'version', 'fileName', 'uploadedAt', 'description', 'deviceType']
+      attributes: ['id', 'version', 'fileName', 'uploadedAt', 'description', 'deviceType', 'isZipExtracted', 'extractPath']
     });
 
-    if (!latestFirmware) {
+    if (!latestFirmware || latestFirmware.length === 0) {
       return res.status(404).json({ success: false, message: "No firmware found" });
     }
 
@@ -136,7 +152,7 @@ exports.getFirmwareByVersion = async (req, res) => {
     
     const firmware = await Firmware.findAll({
       where: { version },
-      attributes: ['id', 'version', 'fileName', 'uploadedAt', 'description', 'deviceType']
+      attributes: ['id', 'version', 'fileName', 'uploadedAt', 'description', 'deviceType', 'isZipExtracted', 'extractPath']
     });
     
     if (!firmware || firmware.length === 0) {

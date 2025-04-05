@@ -13,7 +13,10 @@ const controllerPath = path.join(__dirname, '../controllers/file-firmware.contro
 router.post(
   "/upload", 
   authenticate, 
-  upload.single("firmware"),
+  upload.uploadFields([
+    { name: "firmware", maxCount: 5 },
+    { name: "documentation", maxCount: 3 }
+  ]),
   firmwareController.uploadFirmware
 );
 

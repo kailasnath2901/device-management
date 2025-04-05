@@ -21,6 +21,14 @@ const Firmware = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
     },
+    extractPath: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    isZipExtracted: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
     isLatest: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
