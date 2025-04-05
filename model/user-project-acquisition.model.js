@@ -2,6 +2,7 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../config/sequelize');
 const User = require('./user.model');
 const Project = require('./project.model');
+const Device = require('./user-device.model');
 
 const UserProjectAcquisition = sequelize.define('UserProjectAcquisition', {
   id: {
@@ -13,7 +14,15 @@ const UserProjectAcquisition = sequelize.define('UserProjectAcquisition', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'user',
+      model: 'users',
+      key: 'id'
+    }
+  },
+  deviceId: {  // Add this field
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'devices',
       key: 'id'
     }
   },
@@ -49,6 +58,17 @@ UserProjectAcquisition.belongsTo(Project, {
   foreignKey: 'projectId', 
   as: 'project',
   onDelete: 'CASCADE' // Add this
+});
+
+
+UserProjectAcquisition.belongsTo(Device, { 
+  foreignKey: 'deviceId', 
+  as: 'device' 
+});
+
+Device.hasMany(UserProjectAcquisition, {
+  foreignKey: 'deviceId',
+  as: 'acquisitions'
 });
 
 module.exports = UserProjectAcquisition;

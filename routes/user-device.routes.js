@@ -21,6 +21,9 @@ router.patch('/Updatedevice/:deviceId',
   deviceController.updateDevice
 );
 
+router.post('/claim', authenticate, deviceController.claimDevice);
+router.get('/my-devices', authenticate, deviceController.getUserDevices);
+
 router.delete('/admin/devices/:deviceId', 
   authenticate, 
   authorizeRoles('admin', 'super_admin'), 

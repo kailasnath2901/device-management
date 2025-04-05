@@ -45,14 +45,10 @@ const User = sequelize.define(
   
 );
 
-User.hasMany(Device, {
-  foreignKey: 'userId',
-  as: 'devices'
-});
+// Set up association in the Device model
+Device.belongsTo(User, { foreignKey: 'userId', as: 'owner' });
 
-Device.belongsTo(User, {
-  foreignKey: 'userId',
-  as: 'user'
-});
+// Add this to your User model
+User.hasMany(Device, { foreignKey: 'userId', as: 'devices' });
 
 module.exports = User;

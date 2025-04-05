@@ -8,44 +8,82 @@ const mime = require("mime-types");
 const FileDownloadLog = require("../model/filedownloadlog");
 
 class ProjectController {
+
   async createProject(req, res) {
     try {
-      const { name, description, youtubeLink } = req.body;
-      let projectData = { name, description, youtubeLink };
-      let files = [];
-
-      // Check if image was uploaded
-      if (req.files && req.files.image && req.files.image.length > 0) {
-        const imageFile = req.files.image[0];
-        projectData.imageUrl = `/images/projects/${imageFile.originalname}`;
-        console.log(`Set project image URL: ${projectData.imageUrl}`);
+      const userId = req.user.id;  // Assuming you get userId from authenticated user
+      
+      // Make sure name exists in the request body
+      if (!req.body.name) {
+        return res.status(400).json({ error: "Project name is required" });
       }
-
-      // Add project files if any
-      if (req.files && req.files.files) {
-        files = req.files.files;
+      
+      const projectData = {
+        name: req.body.name,
+        description: req.body.description,
+        youtubeLink: req.body.youtubeLink,
+        projectType: req.body.projectType || "free",
+        maxAcquisitions: req.body.maxAcquisitions || 5,
+        lastUpdated: new Date()
+      };
+      
+      // Handle image file
+      if (req.files && req.files.image && req.files.image[0]) {
+        projectData.imageUrl = `/images/projects/${req.files.image[0].filename}`;
       }
-
-      // Create the project with ProjectService
-      const project = await ProjectService.createProject(
-        req.user.id,
-        projectData,
-        files
-      );
-
-      res.status(201).json({
-        success: true,
-        message: "Project created successfully",
-        project,
+      
+      const project = await Project.create({
+        ...projectData,
+        version: 1,
+        userId,
+      });
+      
+      if (req.files && req.files.length > 0) {
+        const projectFiles = req.files.map((file) => {
+          // Check if this is an extracted zip file
+          if (file.isExtracted && file.extractPath) {
+            return {
+              projectId: project.id,
+              filename: path.basename(file.originalname, '.zip'), // Use zip name without extension
+              fileType: 'directory', // Mark as directory
+              fileSize: file.size,
+              filePath: file.extractPath, // Use the extraction path
+              mimetype: 'application/directory',
+              // Use correct casing to match the column names defined in your model
+              isZipExtracted: true,
+              originalZipName: file.originalname
+            };
+          } else {
+            // Regular file
+            return {
+              projectId: project.id,
+              filename: file.filename,
+              fileType: path.extname(file.originalname),
+              fileSize: file.size,
+              filePath: file.path,
+              mimetype: file.mimetype,
+              // Include these fields for all files, but set to default values for non-zip files
+              isZipExtracted: false,
+              originalZipName: null
+            };
+          }
+        });
+    
+        await ProjectFile.bulkCreate(projectFiles);
+      }
+      
+      return res.status(201).json({ 
+        success: true, 
+        message: "Project created successfully", 
+        project 
       });
     } catch (error) {
       console.error("Error creating project:", error);
-      res.status(400).json({
-        success: false,
-        message: error.message,
-      });
+      return res.status(500).json({ error: error.message });
     }
   }
+
+
 
   async getUserProjects(req, res) {
     try {
@@ -174,29 +212,42 @@ class ProjectController {
   async acquireProject(req, res) {
     try {
       const { projectId } = req.params;
-
-      if (!req.user || !req.user.id) {
-        return res.status(401).json({
+      const { deviceId } = req.body;
+      const userId = req.user.id;
+  
+      // Validation
+      if (!projectId) {
+        return res.status(400).json({
           success: false,
-          message: "User not authenticated",
+          message: "Project ID is required"
         });
       }
-
+  
+      if (!deviceId) {
+        return res.status(400).json({
+          success: false,
+          message: "Device ID is required"
+        });
+      }
+  
+      // Call service method
       const result = await ProjectService.acquireProject(
-        req.user.id,
-        projectId
+        userId,
+        parseInt(projectId),
+        parseInt(deviceId)
       );
-
-      res.json({
+  
+      return res.status(200).json({
         success: true,
-        message: "Project acquired successfully",
-        firmwareVersion: result.firmwareVersion,
+        message: "Project acquired successfully for the device",
+        acquisition: result.acquisition,
+        firmwareVersion: result.firmwareVersion
       });
     } catch (error) {
       console.error("Acquire Project Error:", error);
-      res.status(500).json({
+      return res.status(error.status || 500).json({
         success: false,
-        message: error.message,
+        message: error.message || "Error acquiring project"
       });
     }
   }
@@ -204,18 +255,20 @@ class ProjectController {
   async getAcquiredProjects(req, res) {
     try {
       const userId = req.user.id;
-      const { page = 1, limit = 10 } = req.query;
+      const { page = 1, limit = 10, deviceId } = req.query;
 
       const result = await ProjectService.getAcquiredProjects(userId, {
         page: parseInt(page),
         limit: parseInt(limit),
+        deviceId: deviceId ? parseInt(deviceId) : null // Allow filtering by device
       });
 
       res.json({
         success: true,
-        currentFirmwareVersion: result.currentFirmwareVersion, // Include the shared version
         projects: result.projects,
         totalAcquiredProjects: result.totalProjectsAcquired,
+        currentPage: result.currentPage,
+        totalPages: result.totalPages
       });
     } catch (error) {
       console.error("Get Acquired Projects Error:", error);
@@ -229,6 +282,7 @@ class ProjectController {
   async removeAcquiredProject(req, res) {
     try {
       const { projectId } = req.params;
+      const { deviceId } = req.body; // Get deviceId from the request
 
       if (!req.user || !req.user.id) {
         return res.status(401).json({
@@ -237,19 +291,47 @@ class ProjectController {
         });
       }
 
+      if (!deviceId) {
+        return res.status(400).json({
+          success: false,
+          message: "Device ID is required",
+        });
+      }
+
       const result = await ProjectService.removeAcquiredProject(
         req.user.id,
-        projectId
+        projectId,
+        deviceId
       );
 
       res.json({
         success: true,
-        message: "Project removed successfully",
+        message: "Project removed successfully from the device",
         firmwareVersion: result.currentFirmwareVersion,
         remainingProjects: result.remainingProjects,
       });
     } catch (error) {
       console.error("Remove Project Error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  
+  async getUserDevices(req, res) {
+    try {
+      const userId = req.user.id;
+      
+      const devices = await ProjectService.getUserDevices(userId);
+      
+      res.json({
+        success: true,
+        devices: devices
+      });
+    } catch (error) {
+      console.error("Get User Devices Error:", error);
       res.status(500).json({
         success: false,
         message: error.message,

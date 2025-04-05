@@ -2,6 +2,7 @@ const Device = require('../model/user-device.model');
 const { Op } = require('sequelize');
 
 class DeviceService {
+  // Admin creates devices without assigning to users
   async createDeviceByAdmin(deviceData) {
     try {
       // Validate required fields
@@ -12,7 +13,13 @@ class DeviceService {
         }
       }
 
-      const device = await Device.create(deviceData);
+      // Set userId to null for admin-created devices
+      // They will be assigned to users later
+      const device = await Device.create({
+        ...deviceData,
+        userId: null // Explicitly set to null for now
+      });
+      
       return device;
     } catch (error) {
       if (error.name === 'SequelizeUniqueConstraintError') {
@@ -22,12 +29,49 @@ class DeviceService {
     }
   }
 
+  // User claims a device by serial number
+  async claimDeviceByUser(serialNumber, userId) {
+    try {
+      // Find device by serial number
+      const device = await Device.findOne({
+        where: { serialNumber }
+      });
+      
+      if (!device) {
+        throw new Error('Device not found with the provided serial number');
+      }
+      
+      // Check if device is already claimed
+      if (device.userId) {
+        throw new Error('This device has already been claimed by a user');
+      }
+      
+      // Check if user has reached max devices (5)
+      const userDeviceCount = await Device.count({
+        where: { userId }
+      });
+      
+      if (userDeviceCount >= 5) {
+        throw new Error('You have reached the maximum limit of 5 devices');
+      }
+      
+      // Assign device to user
+      device.userId = userId;
+      device.lastUpdated = new Date();
+      await device.save();
+      
+      return device;
+    } catch (error) {
+      throw new Error(`Failed to claim device: ${error.message}`);
+    }
+  }
+
   async getDevices(options = {}) {
     try {
       // Ensure values are valid numbers or use defaults
       const page = Math.max(1, parseInt(options.page) || 1);
       const limit = Math.max(1, parseInt(options.limit) || 10);
-      const { search, deviceType } = options;
+      const { search, deviceType, userId, onlyUnassigned } = options;
 
       const whereConditions = {};
       
@@ -40,6 +84,16 @@ class DeviceService {
       
       if (deviceType) {
         whereConditions.deviceType = deviceType;
+      }
+      
+      // Filter by userId if provided
+      if (userId) {
+        whereConditions.userId = userId;
+      }
+      
+      // Filter only unassigned devices if requested
+      if (onlyUnassigned) {
+        whereConditions.userId = null;
       }
 
       const offset = (page - 1) * limit;
@@ -59,6 +113,18 @@ class DeviceService {
       };
     } catch (error) {
       throw new Error(`Error fetching devices: ${error.message}`);
+    }
+  }
+
+  async getUserDevices(userId) {
+    try {
+      const devices = await Device.findAll({
+        where: { userId }
+      });
+      
+      return devices;
+    } catch (error) {
+      throw new Error(`Error fetching user devices: ${error.message}`);
     }
   }
 

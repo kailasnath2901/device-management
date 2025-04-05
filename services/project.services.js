@@ -1,6 +1,7 @@
 const Project = require("../model/project.model");
 const ProjectFile = require("../model/project-files.model");
 const UserProjectAcquisition = require("../model/user-project-acquisition.model");
+const Device = require("../model/user-device.model");
 const { Sequelize } = require("sequelize");
 const sequelize = require("../config/sequelize");
 const path = require("path");
@@ -9,7 +10,6 @@ class ProjectService {
 
   async createProject(userId, projectData, files) {
     // Set initial version as 1 for new projects
-    // Set initial version as 1 for new projects
     const project = await Project.create({
       ...projectData,
       version: 1, // Add initial version
@@ -17,14 +17,31 @@ class ProjectService {
     });
   
     if (files && files.length > 0) {
-      const projectFiles = files.map((file) => ({
-        projectId: project.id,
-        filename: file.filename,
-        fileType: path.extname(file.originalname),
-        fileSize: file.size,
-        filePath: file.path,
-        mimetype: file.mimetype,
-      }));
+      const projectFiles = files.map((file) => {
+        // Check if this is an extracted zip file
+        if (file.isExtracted && file.extractPath) {
+          return {
+            projectId: project.id,
+            filename: path.basename(file.originalname, '.zip'), // Use zip name without extension
+            fileType: 'directory', // Mark as directory
+            fileSize: file.size,
+            filePath: file.extractPath, // Use the extraction path
+            mimetype: 'application/directory',
+            isZipExtracted: true,
+            originalZipName: file.originalname
+          };
+        } else {
+          // Regular file
+          return {
+            projectId: project.id,
+            filename: file.filename,
+            fileType: path.extname(file.originalname),
+            fileSize: file.size,
+            filePath: file.path,
+            mimetype: file.mimetype,
+          };
+        }
+      });
   
       await ProjectFile.bulkCreate(projectFiles);
     }
@@ -132,42 +149,82 @@ class ProjectService {
     return latestAcquisition?.firmwareVersion || "1.0";
   }
 
-  async getAcquiredProjects(userId, options = {}) {
-    const { page = 1, limit = 10 } = options;
-
-    // Get current user version
-    const currentVersion = await this.getCurrentUserVersion(userId);
-
-    const { count, rows: acquisitions } =
-      await UserProjectAcquisition.findAndCountAll({
-        where: { userId },
-        include: [
-          {
-            model: Project,
-            as: "project", // Use the same alias as defined in the model
-            include: [
-              {
-                model: ProjectFile,
-                as: "files",
-              },
-            ],
-          },
-        ],
-        limit,
-        offset: (page - 1) * limit,
-        order: [["createdAt", "DESC"]],
-      });
-
+  async getAcquiredProjects(userId, options) {
+    // Updated to include device information
+    const { page = 1, limit = 10, deviceId } = options;
+    const offset = (page - 1) * limit;
+    
+    // Build the where clause based on whether deviceId is provided
+    const whereClause = {
+      userId: userId,
+      hasRemovalOccurred: false
+    };
+    
+    // If deviceId is provided, filter by that device
+    if (deviceId) {
+      whereClause.deviceId = deviceId;
+    }
+    
+    const { count, rows } = await UserProjectAcquisition.findAndCountAll({
+      where: whereClause,
+      include: [
+        {
+          model: Project,
+          as: "project",
+          attributes: ["id", "name", "description", "imageUrl", "projectType"]
+        },
+        {
+          model: Device,
+          as: "device",
+          attributes: ["id", "deviceName", "deviceType", "firmwareVersion"]
+        }
+      ],
+      limit: limit,
+      offset: offset,
+      order: [["createdAt", "DESC"]]
+    });
+    
     return {
-      success: true,
-      currentFirmwareVersion: currentVersion,
-      projects: acquisitions.map((acquisition) => ({
-        ...acquisition.project.toJSON(), // Use lowercase 'project' to match the alias
-        acquiredAt: acquisition.createdAt,
-      })),
+      projects: rows,
       totalProjectsAcquired: count,
-      totalPages: Math.ceil(count / limit),
       currentPage: page,
+      totalPages: Math.ceil(count / limit)
+    };
+  }
+
+  async removeAcquiredProject(userId, projectId, deviceId) {
+    // First check if the acquisition exists
+    const acquisition = await UserProjectAcquisition.findOne({
+      where: {
+        userId: userId,
+        projectId: projectId,
+        deviceId: deviceId,
+        hasRemovalOccurred: false
+      }
+    });
+    
+    if (!acquisition) {
+      throw new Error("Project acquisition not found");
+    }
+    
+    // Get device information
+    const device = await Device.findByPk(deviceId);
+    
+    // Mark the acquisition as removed
+    acquisition.hasRemovalOccurred = true;
+    await acquisition.save();
+    
+    // Count remaining projects for this device
+    const remainingProjects = await UserProjectAcquisition.count({
+      where: {
+        deviceId: deviceId,
+        hasRemovalOccurred: false
+      }
+    });
+    
+    return {
+      currentFirmwareVersion: device.firmwareVersion,
+      remainingProjects: remainingProjects
     };
   }
 
@@ -194,135 +251,154 @@ class ProjectService {
     return (versionNum + 0.1).toFixed(1);
   }
 
-
-  async acquireProject(userId, projectId) {
+  async acquireProject(userId, projectId, deviceId) {
     const transaction = await sequelize.transaction();
-    const MAX_ACQUISITIONS = 5;
-
+  
     try {
-      const project = await Project.findByPk(projectId);
+      const project = await Project.findByPk(projectId, { transaction });
       if (!project) {
-        await transaction.rollback();
         throw new Error("Project not found");
       }
-
-      const existingAcquisition = await UserProjectAcquisition.findOne({
-        where: { userId, projectId },
-        transaction,
-      });
-
-      if (existingAcquisition) {
-        await transaction.rollback();
-        throw new Error("Project already acquired");
-      }
-
-      // Get current count WITHIN the transaction
-      const currentAcquisitions = await UserProjectAcquisition.count({
-        where: { userId },
-        transaction,
-      });
-
-      // Check maximum limit
-      if (currentAcquisitions >= MAX_ACQUISITIONS) {
-        await transaction.rollback();
-        throw new Error(`Maximum limit of ${MAX_ACQUISITIONS} project acquisitions reached. Please remove an existing project before acquiring a new one.`);
-      }
-
-      // Rest of the logic
-      const hasRemoval = await UserProjectAcquisition.findOne({
+  
+      const device = await Device.findOne({
         where: {
-          userId,
-          hasRemovalOccurred: true,
+          id: deviceId,
+          userId: userId
         },
-        transaction,
+        transaction
       });
-
-      const userVersion = await this.getCurrentUserVersion(userId);
-      const newVersion = hasRemoval
-        ? this.incrementFirmwareVersion(userVersion)
-        : userVersion;
-
-      await UserProjectAcquisition.update(
-        {
-          firmwareVersion: newVersion,
-          hasRemovalOccurred: false,
-        },
-        {
-          where: { userId },
-          transaction,
-        }
-      );
-
-      const acquisition = await UserProjectAcquisition.create(
-        {
-          userId,
-          projectId,
-          firmwareVersion: newVersion,
-          hasRemovalOccurred: false,
-        },
-        { transaction }
-      );
-
-      await transaction.commit();
-      return {
-        success: true,
-        firmwareVersion: newVersion,
-        acquisition,
-      };
-
-    } catch (error) {
-      // Only rollback if the transaction hasn't been rolled back already
-      if (transaction && !transaction.finished) {
-        await transaction.rollback();
+  
+      if (!device) {
+        throw new Error("Device not found or does not belong to this user");
       }
-      throw error;
-    }
-  }
-
-
-  async removeAcquiredProject(userId, projectId) {
-    const transaction = await sequelize.transaction();
-
-    try {
+  
       const existingAcquisition = await UserProjectAcquisition.findOne({
-        where: { userId, projectId },
+        where: {
+          userId: userId,
+          projectId: projectId,
+          deviceId: deviceId,
+          hasRemovalOccurred: false
+        },
+        transaction
       });
-
-      if (!existingAcquisition) {
-        throw new Error("Project acquisition not found");
+  
+      if (existingAcquisition) {
+        throw new Error("You have already acquired this project for this device");
       }
-
-      // Delete the acquisition
-      await UserProjectAcquisition.destroy({
-        where: { userId, projectId },
-        transaction,
+  
+      const deviceProjectCount = await UserProjectAcquisition.count({
+        where: {
+          deviceId: deviceId,
+          hasRemovalOccurred: false
+        },
+        transaction
       });
-
-      // Get current version but don't increment it
-      const currentVersion = await this.getCurrentUserVersion(userId);
-
-      // Set a flag in the database to indicate a removal has occurred
-      await UserProjectAcquisition.update(
-        { hasRemovalOccurred: true },
-        {
-          where: { userId },
-          transaction,
-        }
-      );
-
+  
+      if (deviceProjectCount >= 5) {
+        throw new Error("This device already has the maximum of 5 projects. Please remove a project before adding a new one.");
+      }
+  
+      const acquisition = await UserProjectAcquisition.create({
+        userId: userId,
+        projectId: projectId,
+        deviceId: deviceId,
+        firmwareVersion: device.firmwareVersion,
+        hasRemovalOccurred: false
+      }, { transaction });
+  
       await transaction.commit();
-
+  
       return {
-        success: true,
-        currentFirmwareVersion: currentVersion,
-        remainingCount: await UserProjectAcquisition.count({
-          where: { userId },
-        }),
+        acquisition,
+        firmwareVersion: device.firmwareVersion
       };
     } catch (error) {
       await transaction.rollback();
       throw error;
     }
+  }
+  
+
+
+  async removeAcquiredProject(userId, projectId, deviceId) {
+    const transaction = await sequelize.transaction();
+  
+    try {
+      const existingAcquisition = await UserProjectAcquisition.findOne({
+        where: { 
+          userId, 
+          projectId,
+          deviceId,
+          hasRemovalOccurred: false
+        },
+        transaction
+      });
+  
+      if (!existingAcquisition) {
+        throw new Error("Project acquisition not found");
+      }
+  
+      // Mark as removed
+      existingAcquisition.hasRemovalOccurred = true;
+      await existingAcquisition.save({ transaction });
+  
+      // Get device info
+      const device = await Device.findByPk(deviceId, { transaction });
+  
+      // Count remaining projects
+      const remainingProjects = await UserProjectAcquisition.count({
+        where: {
+          deviceId: deviceId,
+          hasRemovalOccurred: false
+        },
+        transaction
+      });
+  
+      await transaction.commit();
+  
+      return {
+        success: true,
+        currentFirmwareVersion: device.firmwareVersion,
+        remainingProjects: remainingProjects
+      };
+    } catch (error) {
+      await transaction.rollback(); // rollback only here
+      throw error;
+    }
+  }
+  
+
+  async getUserDevices(userId) {
+    const devices = await Device.findAll({
+      where: {
+        userId: userId
+      },
+      include: [
+        {
+          model: UserProjectAcquisition,
+          as: "acquisitions",
+          where: {
+            hasRemovalOccurred: false
+          },
+          required: false,
+          include: [
+            {
+              model: Project,
+              as: "project"
+            }
+          ]
+        }
+      ]
+    });
+    
+    // For each device, add a count of projects
+    const devicesWithCounts = devices.map(device => {
+      const deviceData = device.toJSON();
+      deviceData.projectCount = device.acquisitions ? device.acquisitions.length : 0;
+      return deviceData;
+    });
+    
+    return devicesWithCounts;
   }
 }
 
