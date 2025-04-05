@@ -46,9 +46,17 @@ const User = sequelize.define(
 );
 
 // Set up association in the Device model
-Device.belongsTo(User, { foreignKey: 'userId', as: 'owner' });
+// device.model.js
+Device.belongsToMany(User, {
+  through: 'devices',
+  foreignKey: 'deviceId',
+});
 
-// Add this to your User model
-User.hasMany(Device, { foreignKey: 'userId', as: 'devices' });
+// user.model.js
+User.belongsToMany(Device, {
+  through: 'devices',
+  foreignKey: 'userId',
+});
+
 
 module.exports = User;

@@ -41,11 +41,20 @@ class DeviceService {
         throw new Error('Device not found with the provided serial number');
       }
       
-      // Check if device is already claimed
-      if (device.userId) {
-        throw new Error('This device has already been claimed by a user');
+      // // Check if device is already claimed
+      // if (device.userId) {
+      //   throw new Error('This device has already been claimed by a user');
+      // }
+      const alreadyClaimed = await Device.findOne({
+        where: {
+          userId,
+          id: device.id
+        }
+      });
+  
+      if (alreadyClaimed) {
+        throw new Error('You have already claimed this device');
       }
-      
       // Check if user has reached max devices (5)
       const userDeviceCount = await Device.count({
         where: { userId }

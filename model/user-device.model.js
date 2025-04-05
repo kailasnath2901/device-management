@@ -39,7 +39,13 @@ const Device = sequelize.define('Device', {
   }
 }, {
   tableName: 'devices',
-  timestamps: true
+  timestamps: true ,
+  indexes: [
+    {
+      unique: true,
+      fields: ['userId', 'deviceId'] // Prevent duplicate claims
+    }
+  ]
 });
 
 module.exports = Device;
