@@ -74,24 +74,31 @@ exports.uploadFirmware = async (req, res) => {
   }
 };
 
-// Get all firmware versions
+// Example for getAllFirmware
 exports.getAllFirmware = async (req, res) => {
+
+  const baseUrl ='https://roboninjaz.com/api';
   try {
     const firmware = await Firmware.findAll({
       attributes: ['id', 'version', 'fileName', 'uploadedAt', 'isLatest', 'description', 'deviceType', 'isZipExtracted', 'extractPath'],
       order: [['version', 'DESC']]
     });
 
+    // Add download URL to each firmware
+    const firmwareWithUrls = firmware.map(fw => ({
+      ...fw.toJSON(),
+      downloadUrl: `${baseUrl}/firmware/${fw.version}`
+    }));
+
     return res.status(200).json({
       success: true,
-      data: firmware
+      data: firmwareWithUrls
     });
   } catch (error) {
     console.error("Error getting firmware:", error);
     return res.status(500).json({ success: false, message: "Error getting firmware", error: error.message });
   }
 };
-
 // Get latest firmware version
 exports.getLatestFirmware = async (req, res) => {
   try {
