@@ -1,6 +1,5 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/sequelize");
-const Device = require("../model/user-device.model")
 
 const User = sequelize.define(
   "User",
@@ -41,22 +40,7 @@ const User = sequelize.define(
   {
     tableName: "user",
     timestamps: true,
-  },
-  
+  }
 );
-
-// Set up association in the Device model
-// device.model.js
-Device.belongsToMany(User, {
-  through: 'devices',
-  foreignKey: 'deviceId',
-});
-
-// user.model.js
-User.belongsToMany(Device, {
-  through: 'devices',
-  foreignKey: 'userId',
-});
-
 
 module.exports = User;

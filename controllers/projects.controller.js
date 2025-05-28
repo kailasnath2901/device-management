@@ -241,7 +241,12 @@ class ProjectController {
         success: true,
         message: "Project acquired successfully for the device",
         acquisition: result.acquisition,
-        firmwareVersion: result.firmwareVersion
+        firmwareVersion: result.firmwareVersion,
+        projectInfo: {
+          currentProjects: result.projectsCount,
+          maxProjects: result.maxProjects,
+          remainingSlots: result.maxProjects - result.projectsCount
+        }
       });
     } catch (error) {
       console.error("Acquire Project Error:", error);

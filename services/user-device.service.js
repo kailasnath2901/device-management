@@ -1,4 +1,5 @@
-const Device = require('../model/user-device.model');
+// Import models with associations
+const { User, Device } = require('../model/associations.model');
 const { Op } = require('sequelize');
 
 class DeviceService {
@@ -14,10 +15,9 @@ class DeviceService {
       }
 
       // Set userId to null for admin-created devices
-      // They will be assigned to users later
       const device = await Device.create({
         ...deviceData,
-        userId: null // Explicitly set to null for now
+        userId: null
       });
       
       return device;
@@ -30,55 +30,97 @@ class DeviceService {
   }
 
   async getDeviceById(deviceId) {
-  try {
-    const device = await Device.findByPk(deviceId, {
-      include: [{
-        model: User,
-        attributes: ['id', 'name', 'email']
-      }]
-    });
-    
-    return device;
-  } catch (error) {
-    throw new Error(`Error fetching device: ${error.message}`);
-  }
-}
-
-async getDeviceBySerialNumber(serialNumber) {
-  try {
-    const device = await Device.findOne({
-      where: { serialNumber },
-      include: [{
-        model: User,
-        attributes: ['id', 'name', 'email']
-      }]
-    });
-    
-    return device;
-  } catch (error) {
-    throw new Error(`Error fetching device: ${error.message}`);
-  }
-}
-
-async removeDeviceClaim(deviceId) {
-  try {
-    const device = await Device.findByPk(deviceId);
-    
-    if (!device) {
-      throw new Error('Device not found');
+    try {
+      const device = await Device.findByPk(deviceId, {
+        include: [{
+          model: User,
+          as: 'user',
+          attributes: ['id', 'username', 'email'],
+          required: false // This allows devices without users to be returned
+        }]
+      });
+      
+      return device;
+    } catch (error) {
+      throw new Error(`Error fetching device: ${error.message}`);
     }
-    
-    // Set userId to null to remove the claim
-    device.userId = null;
-    device.lastUpdated = new Date();
-    
-    await device.save();
-    
-    return device;
-  } catch (error) {
-    throw new Error(`Error removing device claim: ${error.message}`);
   }
-}
+
+  async getDeviceBySerialNumber(serialNumber) {
+    try {
+      const device = await Device.findOne({
+        where: { serialNumber },
+        include: [{
+          model: User,
+          as: 'user',
+          attributes: ['id', 'username', 'email'],
+          required: false // This allows devices without users to be returned
+        }]
+      });
+      
+      return device;
+    } catch (error) {
+      throw new Error(`Error fetching device: ${error.message}`);
+    }
+  }
+
+  // Get device with current claiming user info
+  async getDeviceWithClaimInfo(serialNumber) {
+    try {
+      const device = await Device.findOne({
+        where: { serialNumber },
+        include: [{
+          model: User,
+          as: 'user',
+          attributes: ['id', 'username', 'email'],
+          required: false
+        }]
+      });
+      
+      if (!device) {
+        return null;
+      }
+
+      // Return device info with claim status
+      return {
+        id: device.id,
+        deviceName: device.deviceName,
+        deviceType: device.deviceType,
+        serialNumber: device.serialNumber,
+        firmwareVersion: device.firmwareVersion,
+        lastUpdated: device.lastUpdated,
+        createdAt: device.createdAt,
+        isClaimed: !!device.userId,
+        claimedBy: device.user ? {
+          id: device.user.id,
+          username: device.user.username,
+          email: device.user.email
+        } : null
+      };
+    } catch (error) {
+      throw new Error(`Error fetching device: ${error.message}`);
+    }
+  }
+
+  async removeDeviceClaim(deviceId) {
+    try {
+      const device = await Device.findByPk(deviceId);
+      
+      if (!device) {
+        throw new Error('Device not found');
+      }
+      
+      // Set userId to null to remove the claim
+      device.userId = null;
+      device.lastUpdated = new Date();
+      
+      await device.save();
+      
+      return device;
+    } catch (error) {
+      throw new Error(`Error removing device claim: ${error.message}`);
+    }
+  }
 
   // User claims a device by serial number
   async claimDeviceByUser(serialNumber, userId) {
@@ -92,20 +134,18 @@ async removeDeviceClaim(deviceId) {
         throw new Error('Device not found with the provided serial number');
       }
       
-      // // Check if device is already claimed
-      // if (device.userId) {
-      //   throw new Error('This device has already been claimed by a user');
-      // }
+      // Check if user has already claimed this specific device
       const alreadyClaimed = await Device.findOne({
         where: {
           userId,
           id: device.id
         }
       });
-  
+
       if (alreadyClaimed) {
         throw new Error('You have already claimed this device');
       }
+
       // Check if user has reached max devices (5)
       const userDeviceCount = await Device.count({
         where: { userId }
@@ -128,7 +168,6 @@ async removeDeviceClaim(deviceId) {
 
   async getDevices(options = {}) {
     try {
-      // Ensure values are valid numbers or use defaults
       const page = Math.max(1, parseInt(options.page) || 1);
       const limit = Math.max(1, parseInt(options.limit) || 10);
       const { search, deviceType, userId, onlyUnassigned } = options;
@@ -146,12 +185,10 @@ async removeDeviceClaim(deviceId) {
         whereConditions.deviceType = deviceType;
       }
       
-      // Filter by userId if provided
       if (userId) {
         whereConditions.userId = userId;
       }
       
-      // Filter only unassigned devices if requested
       if (onlyUnassigned) {
         whereConditions.userId = null;
       }
@@ -160,6 +197,12 @@ async removeDeviceClaim(deviceId) {
 
       const { count, rows } = await Device.findAndCountAll({
         where: whereConditions,
+        include: [{
+          model: User,
+          as: 'user',
+          attributes: ['id', 'username', 'email'],
+          required: false
+        }],
         limit: limit,
         offset: offset,
         order: [['createdAt', 'DESC']]

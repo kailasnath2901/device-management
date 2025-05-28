@@ -40,10 +40,10 @@ class DeviceController {
         });
       }
       
-      // Check if device exists and is already claimed
-      const existingDevice = await DeviceService.getDeviceBySerialNumber(serialNumber);
+      // Get device with current claim information
+      const deviceInfo = await DeviceService.getDeviceWithClaimInfo(serialNumber);
       
-      if (!existingDevice) {
+      if (!deviceInfo) {
         return res.status(404).json({
           success: false,
           message: "Device not found"
@@ -51,27 +51,61 @@ class DeviceController {
       }
       
       // Check if device is already claimed by another user
-      if (existingDevice.userId && existingDevice.userId !== userId) {
+      // if (deviceInfo.isClaimed && deviceInfo.claimedBy.id !== userId) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: `Device is already claimed by user: ${deviceInfo.claimedBy.username} (${deviceInfo.claimedBy.email})`,
+      //     claimedBy: deviceInfo.claimedBy
+      //   });
+      // }
+            if (deviceInfo.isClaimed && deviceInfo.claimedBy.id !== userId) {
         return res.status(400).json({
           success: false,
-          message: "Device is already claimed by another user"
+          message: `Device is already claimed by user: ${deviceInfo.claimedBy.username}`,
+     
         });
       }
-      
       // Check if device is already claimed by the same user
-      if (existingDevice.userId === userId) {
+      if (deviceInfo.isClaimed && deviceInfo.claimedBy.id === userId) {
         return res.status(400).json({
           success: false,
-          message: "Device is already claimed by you"
+          message: "Device is already claimed by you",
+          device: deviceInfo
         });
       }
       
+      // Claim the device
       const device = await DeviceService.claimDeviceByUser(serialNumber, userId);
       
       res.json({
         success: true,
         message: "Device claimed successfully",
         device
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async checkDeviceStatus(req, res) {
+    try {
+      const { serialNumber } = req.params;
+      
+      const deviceInfo = await DeviceService.getDeviceWithClaimInfo(serialNumber);
+      
+      if (!deviceInfo) {
+        return res.status(404).json({
+          success: false,
+          message: "Device not found"
+        });
+      }
+      
+      res.json({
+        success: true,
+        device: deviceInfo
       });
     } catch (error) {
       res.status(400).json({
@@ -104,6 +138,11 @@ class DeviceController {
           message: "You can only remove devices that you have claimed"
         });
       }
+      const deviceResponse = {
+        deviceName: updatedDevice.deviceName,
+        deviceType: updatedDevice.deviceType,
+        serialNumber: updatedDevice.serialNumber
+      };
       
       // Remove the claim (set userId to null)
       const updatedDevice = await DeviceService.removeDeviceClaim(deviceId);
@@ -111,7 +150,7 @@ class DeviceController {
       res.json({
         success: true,
         message: "Device claim removed successfully",
-        device: updatedDevice
+        device: deviceResponse
       });
     } catch (error) {
       res.status(400).json({

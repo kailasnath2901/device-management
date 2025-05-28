@@ -1,10 +1,18 @@
 const User = require('./user.model');
 const Device = require('./user-device.model');
 
-// Set up associations
-Device.belongsTo(User, { foreignKey: 'userId', as: 'owner' });
-User.hasMany(Device, { foreignKey: 'userId', as: 'devices' });
+// Define associations
+User.hasMany(Device, {
+  foreignKey: 'userId',
+  as: 'devices'
+});
 
+Device.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user'
+});
+
+// Export models with associations
 module.exports = {
   User,
   Device

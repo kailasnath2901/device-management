@@ -1,6 +1,5 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/sequelize');
-const User = require('./user.model');
 
 const Device = sequelize.define('Device', {
   id: {
@@ -10,9 +9,9 @@ const Device = sequelize.define('Device', {
   },
   userId: {
     type: DataTypes.INTEGER,
-    allowNull: true, // Changed to true to allow null values initially
+    allowNull: true,
     references: {
-      model: 'users',
+      model: 'user', // Should match your User table name
       key: 'id'
     }
   },
@@ -39,13 +38,7 @@ const Device = sequelize.define('Device', {
   }
 }, {
   tableName: 'devices',
-  timestamps: true ,
-  indexes: [
-    {
-      unique: true,
-      fields: ['userId', 'deviceId'] // Prevent duplicate claims
-    }
-  ]
+  timestamps: true
 });
 
 module.exports = Device;
