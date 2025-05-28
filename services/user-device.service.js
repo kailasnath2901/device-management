@@ -29,6 +29,57 @@ class DeviceService {
     }
   }
 
+  async getDeviceById(deviceId) {
+  try {
+    const device = await Device.findByPk(deviceId, {
+      include: [{
+        model: User,
+        attributes: ['id', 'name', 'email']
+      }]
+    });
+    
+    return device;
+  } catch (error) {
+    throw new Error(`Error fetching device: ${error.message}`);
+  }
+}
+
+async getDeviceBySerialNumber(serialNumber) {
+  try {
+    const device = await Device.findOne({
+      where: { serialNumber },
+      include: [{
+        model: User,
+        attributes: ['id', 'name', 'email']
+      }]
+    });
+    
+    return device;
+  } catch (error) {
+    throw new Error(`Error fetching device: ${error.message}`);
+  }
+}
+
+async removeDeviceClaim(deviceId) {
+  try {
+    const device = await Device.findByPk(deviceId);
+    
+    if (!device) {
+      throw new Error('Device not found');
+    }
+    
+    // Set userId to null to remove the claim
+    device.userId = null;
+    device.lastUpdated = new Date();
+    
+    await device.save();
+    
+    return device;
+  } catch (error) {
+    throw new Error(`Error removing device claim: ${error.message}`);
+  }
+}
+
   // User claims a device by serial number
   async claimDeviceByUser(serialNumber, userId) {
     try {

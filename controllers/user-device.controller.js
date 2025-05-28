@@ -40,12 +40,78 @@ class DeviceController {
         });
       }
       
+      // Check if device exists and is already claimed
+      const existingDevice = await DeviceService.getDeviceBySerialNumber(serialNumber);
+      
+      if (!existingDevice) {
+        return res.status(404).json({
+          success: false,
+          message: "Device not found"
+        });
+      }
+      
+      // Check if device is already claimed by another user
+      if (existingDevice.userId && existingDevice.userId !== userId) {
+        return res.status(400).json({
+          success: false,
+          message: "Device is already claimed by another user"
+        });
+      }
+      
+      // Check if device is already claimed by the same user
+      if (existingDevice.userId === userId) {
+        return res.status(400).json({
+          success: false,
+          message: "Device is already claimed by you"
+        });
+      }
+      
       const device = await DeviceService.claimDeviceByUser(serialNumber, userId);
       
       res.json({
         success: true,
         message: "Device claimed successfully",
         device
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  
+  async removeClaimedDevice(req, res) {
+    try {
+      const { deviceId } = req.params;
+      const userId = req.user.id;
+      
+      // Get the device to check ownership
+      const device = await DeviceService.getDeviceById(deviceId);
+      
+      if (!device) {
+        return res.status(404).json({
+          success: false,
+          message: "Device not found"
+        });
+      }
+      
+      // Check if the device is claimed by the current user
+      if (!device.userId || device.userId !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only remove devices that you have claimed"
+        });
+      }
+      
+      // Remove the claim (set userId to null)
+      const updatedDevice = await DeviceService.removeDeviceClaim(deviceId);
+      
+      res.json({
+        success: true,
+        message: "Device claim removed successfully",
+        device: updatedDevice
       });
     } catch (error) {
       res.status(400).json({
