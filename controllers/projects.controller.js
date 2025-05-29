@@ -114,6 +114,212 @@ class ProjectController {
     }
   }
 
+  async editProject(req, res) {
+    try {
+      const { projectId } = req.params;
+      const userId = req.user.id;
+      const userRole = req.user.role;
+
+      // Find existing project
+      const existingProject = await Project.findByPk(projectId, {
+        include: [
+          {
+            model: ProjectFile,
+            as: "files",
+          },
+        ],
+      });
+
+      if (!existingProject) {
+        return res.status(404).json({
+          success: false,
+          message: "Project not found",
+        });
+      }
+
+      // Authorization check
+      if (userRole !== "admin" && userRole !== "super_admin" && existingProject.userId !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized. You can only edit your own projects or be an admin.",
+        });
+      }
+
+      // Prepare update data
+      const updateData = {};
+      if (req.body.name) updateData.name = req.body.name;
+      if (req.body.description !== undefined) updateData.description = req.body.description;
+      if (req.body.youtubeLink !== undefined) updateData.youtubeLink = req.body.youtubeLink;
+      if (req.body.projectType) updateData.projectType = req.body.projectType;
+      if (req.body.maxAcquisitions) updateData.maxAcquisitions = req.body.maxAcquisitions;
+      updateData.lastUpdated = new Date();
+
+      // Handle image update
+      if (req.files && req.files.image && req.files.image[0]) {
+        // Delete old image if exists
+        if (existingProject.imageUrl) {
+          const oldImagePath = path.join(process.cwd(), 'public', existingProject.imageUrl);
+          if (fs.existsSync(oldImagePath)) {
+            fs.unlinkSync(oldImagePath);
+          }
+        }
+        updateData.imageUrl = `/images/projects/${req.files.image[0].filename}`;
+      }
+
+      // Update project basic info
+      await existingProject.update(updateData);
+
+      // Handle files update
+      let filesToDelete = [];
+      let newFiles = [];
+
+      // Parse files to delete (sent as JSON string in body)
+      if (req.body.filesToDelete) {
+        try {
+          filesToDelete = JSON.parse(req.body.filesToDelete);
+        } catch (e) {
+          console.error("Error parsing filesToDelete:", e);
+        }
+      }
+
+      // Delete specified files
+      if (filesToDelete.length > 0) {
+        for (const fileId of filesToDelete) {
+          const fileToDelete = await ProjectFile.findByPk(fileId);
+          if (fileToDelete && fileToDelete.projectId === existingProject.id) {
+            // Delete physical file/directory
+            if (fs.existsSync(fileToDelete.filePath)) {
+              if (fileToDelete.isZipExtracted) {
+                // Delete directory recursively
+                fs.rmSync(fileToDelete.filePath, { recursive: true, force: true });
+              } else {
+                // Delete single file
+                fs.unlinkSync(fileToDelete.filePath);
+              }
+            }
+            // Delete from database
+            await fileToDelete.destroy();
+          }
+        }
+      }
+
+      // Process new files (excluding image field)
+      if (req.files) {
+        Object.keys(req.files).forEach((fieldName) => {
+          if (fieldName !== "image") {
+            newFiles = newFiles.concat(req.files[fieldName]);
+          }
+        });
+
+        if (Array.isArray(req.files)) {
+          newFiles = newFiles.concat(
+            req.files.filter(
+              (file) => !file.fieldname || file.fieldname !== "image"
+            )
+          );
+        }
+      }
+
+      // Add new files to database
+      if (newFiles.length > 0) {
+        const projectFilesData = newFiles.map((file) => {
+          if (file.isExtracted && file.extractPath) {
+            return {
+              projectId: existingProject.id,
+              filename: path.basename(file.originalname, ".zip"),
+              fileType: "directory",
+              fileSize: file.size,
+              filePath: file.extractPath,
+              mimetype: "application/directory",
+              isZipExtracted: true,
+              originalZipName: file.originalname,
+            };
+          } else {
+            return {
+              projectId: existingProject.id,
+              filename: file.filename || file.originalname,
+              fileType: path.extname(file.originalname),
+              fileSize: file.size,
+              filePath: file.path,
+              mimetype: file.mimetype,
+              isZipExtracted: false,
+              originalZipName: null,
+            };
+          }
+        });
+
+        await ProjectFile.bulkCreate(projectFilesData);
+      }
+
+      // Fetch updated project with files
+      const updatedProject = await Project.findByPk(projectId, {
+        include: [
+          {
+            model: ProjectFile,
+            as: "files",
+          },
+        ],
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Project updated successfully",
+        project: updatedProject,
+      });
+    } catch (error) {
+      console.error("Error updating project:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+ // NEW: Get single project for editing
+  async getProject(req, res) {
+    try {
+      const { projectId } = req.params;
+      const userId = req.user.id;
+      const userRole = req.user.role;
+
+      const project = await Project.findByPk(projectId, {
+        include: [
+          {
+            model: ProjectFile,
+            as: "files",
+          },
+        ],
+      });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message: "Project not found",
+        });
+      }
+
+      // Authorization check for viewing
+      if (userRole !== "admin" && userRole !== "super_admin" && project.userId !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized to view this project",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        project: project,
+      });
+    } catch (error) {
+      console.error("Error fetching project:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  
   async getUserProjects(req, res) {
     try {
       const userId = req.user.id;
@@ -371,6 +577,8 @@ class ProjectController {
       });
     }
   }
+
+
 }
 
 module.exports = new ProjectController();
