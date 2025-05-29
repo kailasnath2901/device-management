@@ -211,6 +211,7 @@ class ProjectService {
           include: [
             {
               model: ProjectFile,
+               as: "files",
               attributes: [
                 "id",
                 "filename",
