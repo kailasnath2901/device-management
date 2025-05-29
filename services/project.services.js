@@ -7,31 +7,48 @@ const sequelize = require("../config/sequelize");
 const path = require("path");
 
 class ProjectService {
-
-  async createProject(userId, projectData, files) {
-    // Set initial version as 1 for new projects
+  async createProject(req, res) {
+  try {
+    const userId = req.user.id;
+    
+    if (!req.body.name) {
+      return res.status(400).json({ error: "Project name is required" });
+    }
+    
+    const projectData = {
+      name: req.body.name,
+      description: req.body.description,
+      youtubeLink: req.body.youtubeLink,
+      projectType: req.body.projectType || "free",
+      maxAcquisitions: req.body.maxAcquisitions || 5,
+      lastUpdated: new Date()
+    };
+    
+    // Handle image file
+    if (req.files && req.files.image && req.files.image[0]) {
+      projectData.imageUrl = `/images/projects/${req.files.image[0].filename}`;
+    }
+    
     const project = await Project.create({
       ...projectData,
-      version: 1, // Add initial version
+      version: 1,
       userId,
     });
-  
-    if (files && files.length > 0) {
-      const projectFiles = files.map((file) => {
-        // Check if this is an extracted zip file
+    
+    if (req.files && req.files.length > 0) {
+      const projectFilesData = req.files.map((file) => {
         if (file.isExtracted && file.extractPath) {
           return {
             projectId: project.id,
-            filename: path.basename(file.originalname, '.zip'), // Use zip name without extension
-            fileType: 'directory', // Mark as directory
+            filename: path.basename(file.originalname, '.zip'),
+            fileType: 'directory',
             fileSize: file.size,
-            filePath: file.extractPath, // Use the extraction path
+            filePath: file.extractPath,
             mimetype: 'application/directory',
             isZipExtracted: true,
             originalZipName: file.originalname
           };
         } else {
-          // Regular file
           return {
             projectId: project.id,
             filename: file.filename,
@@ -39,22 +56,33 @@ class ProjectService {
             fileSize: file.size,
             filePath: file.path,
             mimetype: file.mimetype,
+            isZipExtracted: false,
+            originalZipName: null
           };
         }
       });
   
-      await ProjectFile.bulkCreate(projectFiles);
+      await ProjectFile.bulkCreate(projectFilesData);
     }
-  
-    return Project.findByPk(project.id, {
-      include: [
-        {
-          model: ProjectFile,
-          as: "files",
-        },
-      ],
+    
+    // Fetch the complete project with files
+    const completeProject = await Project.findByPk(project.id, {
+      include: [{
+        model: ProjectFile,
+        as: 'files' // Make sure this matches your association alias
+      }]
     });
+    
+    return res.status(201).json({ 
+      success: true, 
+      message: "Project created successfully", 
+      project: completeProject
+    });
+  } catch (error) {
+    console.error("Error creating project:", error);
+    return res.status(500).json({ error: error.message });
   }
+}
 
   async updateProjectFirmware(projectId, newFirmwareVersion, userRole) {
     if (userRole !== "admin" && userRole !== "super_admin") {
@@ -150,45 +178,74 @@ class ProjectService {
   }
 
   async getAcquiredProjects(userId, options) {
-    // Updated to include device information
+    // Updated to include device information and project files
     const { page = 1, limit = 10, deviceId } = options;
     const offset = (page - 1) * limit;
-    
+
     // Build the where clause based on whether deviceId is provided
     const whereClause = {
       userId: userId,
-      hasRemovalOccurred: false
+      hasRemovalOccurred: false,
     };
-    
+
     // If deviceId is provided, filter by that device
     if (deviceId) {
       whereClause.deviceId = deviceId;
     }
-    
+
     const { count, rows } = await UserProjectAcquisition.findAndCountAll({
       where: whereClause,
       include: [
         {
           model: Project,
           as: "project",
-          attributes: ["id", "name", "description", "imageUrl", "projectType"]
+          attributes: [
+            "id",
+            "name",
+            "description",
+            "imageUrl",
+            "projectType",
+            "youtubeLink",
+            "version",
+          ],
+          include: [
+            {
+              model: ProjectFile,
+              attributes: [
+                "id",
+                "filename",
+                "fileType",
+                "fileSize",
+                "filePath",
+                "mimetype",
+                "isZipExtracted",
+                "originalZipName",
+              ],
+            },
+          ],
         },
         {
           model: Device,
           as: "device",
-          attributes: ["id", "deviceName", "deviceType", "firmwareVersion"]
-        }
+          attributes: [
+            "id",
+            "deviceName",
+            "deviceType",
+            "firmwareVersion",
+            "serialNumber",
+          ],
+        },
       ],
       limit: limit,
       offset: offset,
-      order: [["createdAt", "DESC"]]
+      order: [["createdAt", "DESC"]],
     });
-    
+
     return {
       projects: rows,
       totalProjectsAcquired: count,
       currentPage: page,
-      totalPages: Math.ceil(count / limit)
+      totalPages: Math.ceil(count / limit),
     };
   }
 
@@ -199,32 +256,32 @@ class ProjectService {
         userId: userId,
         projectId: projectId,
         deviceId: deviceId,
-        hasRemovalOccurred: false
-      }
+        hasRemovalOccurred: false,
+      },
     });
-    
+
     if (!acquisition) {
       throw new Error("Project acquisition not found");
     }
-    
+
     // Get device information
     const device = await Device.findByPk(deviceId);
-    
+
     // Mark the acquisition as removed
     acquisition.hasRemovalOccurred = true;
     await acquisition.save();
-    
+
     // Count remaining projects for this device
     const remainingProjects = await UserProjectAcquisition.count({
       where: {
         deviceId: deviceId,
-        hasRemovalOccurred: false
-      }
+        hasRemovalOccurred: false,
+      },
     });
-    
+
     return {
       currentFirmwareVersion: device.firmwareVersion,
-      remainingProjects: remainingProjects
+      remainingProjects: remainingProjects,
     };
   }
 
@@ -253,151 +310,157 @@ class ProjectService {
 
   async acquireProject(userId, projectId, deviceId) {
     const transaction = await sequelize.transaction();
-  
+
     try {
       const project = await Project.findByPk(projectId, { transaction });
       if (!project) {
         throw new Error("Project not found");
       }
-  
+
       const device = await Device.findOne({
         where: {
           id: deviceId,
-          userId: userId
+          userId: userId,
         },
-        transaction
+        transaction,
       });
-  
+
       if (!device) {
         throw new Error("Device not found or does not belong to this user");
       }
-  
+
       const existingAcquisition = await UserProjectAcquisition.findOne({
         where: {
           userId: userId,
           projectId: projectId,
           deviceId: deviceId,
-          hasRemovalOccurred: false
+          hasRemovalOccurred: false,
         },
-        transaction
+        transaction,
       });
-  
+
       if (existingAcquisition) {
-        throw new Error("You have already acquired this project for this device");
+        throw new Error(
+          "You have already acquired this project for this device"
+        );
       }
-  
+
       const deviceProjectCount = await UserProjectAcquisition.count({
         where: {
           deviceId: deviceId,
-          hasRemovalOccurred: false
+          hasRemovalOccurred: false,
         },
-        transaction
+        transaction,
       });
-  
+
       if (deviceProjectCount >= 5) {
-        throw new Error("This device already has the maximum of 5 projects. Please remove a project before adding a new one.");
+        throw new Error(
+          "This device already has the maximum of 5 projects. Please remove a project before adding a new one."
+        );
       }
-  
-      const acquisition = await UserProjectAcquisition.create({
-        userId: userId,
-        projectId: projectId,
-        deviceId: deviceId,
-        firmwareVersion: device.firmwareVersion,
-        hasRemovalOccurred: false
-      }, { transaction });
-  
+
+      const acquisition = await UserProjectAcquisition.create(
+        {
+          userId: userId,
+          projectId: projectId,
+          deviceId: deviceId,
+          firmwareVersion: device.firmwareVersion,
+          hasRemovalOccurred: false,
+        },
+        { transaction }
+      );
+
       await transaction.commit();
-  
+
       return {
         acquisition,
-        firmwareVersion: device.firmwareVersion
+        firmwareVersion: device.firmwareVersion,
       };
     } catch (error) {
       await transaction.rollback();
       throw error;
     }
   }
-  
-
 
   async removeAcquiredProject(userId, projectId, deviceId) {
     const transaction = await sequelize.transaction();
-  
+
     try {
       const existingAcquisition = await UserProjectAcquisition.findOne({
-        where: { 
-          userId, 
+        where: {
+          userId,
           projectId,
           deviceId,
-          hasRemovalOccurred: false
+          hasRemovalOccurred: false,
         },
-        transaction
+        transaction,
       });
-  
+
       if (!existingAcquisition) {
         throw new Error("Project acquisition not found");
       }
-  
+
       // Mark as removed
       existingAcquisition.hasRemovalOccurred = true;
       await existingAcquisition.save({ transaction });
-  
+
       // Get device info
       const device = await Device.findByPk(deviceId, { transaction });
-  
+
       // Count remaining projects
       const remainingProjects = await UserProjectAcquisition.count({
         where: {
           deviceId: deviceId,
-          hasRemovalOccurred: false
+          hasRemovalOccurred: false,
         },
-        transaction
+        transaction,
       });
-  
+
       await transaction.commit();
-  
+
       return {
         success: true,
         currentFirmwareVersion: device.firmwareVersion,
-        remainingProjects: remainingProjects
+        remainingProjects: remainingProjects,
       };
     } catch (error) {
       await transaction.rollback(); // rollback only here
       throw error;
     }
   }
-  
 
   async getUserDevices(userId) {
     const devices = await Device.findAll({
       where: {
-        userId: userId
+        userId: userId,
       },
       include: [
         {
           model: UserProjectAcquisition,
           as: "acquisitions",
           where: {
-            hasRemovalOccurred: false
+            hasRemovalOccurred: false,
           },
           required: false,
           include: [
             {
               model: Project,
-              as: "project"
-            }
-          ]
-        }
-      ]
+              as: "project",
+            },
+          ],
+        },
+      ],
     });
-    
+
     // For each device, add a count of projects
-    const devicesWithCounts = devices.map(device => {
+    const devicesWithCounts = devices.map((device) => {
       const deviceData = device.toJSON();
-      deviceData.projectCount = device.acquisitions ? device.acquisitions.length : 0;
+      deviceData.projectCount = device.acquisitions
+        ? device.acquisitions.length
+        : 0;
       return deviceData;
     });
-    
+
     return devicesWithCounts;
   }
 }
