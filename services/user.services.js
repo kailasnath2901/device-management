@@ -1,14 +1,18 @@
+// services/user.services.js - Updated with email OTP verification
 const User = require('../model/user.model');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const Project = require("../model/project.model");
-const UserProjectAcquisition = require("../model/user-project-acquisition.model")
-const ProjectFile= require("../model/project-files.model")
+const UserProjectAcquisition = require("../model/user-project-acquisition.model");
+const ProjectFile = require("../model/project-files.model");
+const OTPService = require('./otp.service');
+const EmailService = require('./email.services');
 
 class UserService {
-  async  signup(userData) {
-    const { username, email, password } = userData;
+  // Modified signup - creates user but doesn't verify email yet
+  async signup(userData) {
+    const { username, email, password, mobile_no } = userData;
     
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
@@ -18,14 +22,82 @@ class UserService {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    return User.create({
+    // Create user with email unverified
+    const user = await User.create({
       username, 
       email, 
       password: hashedPassword,
-      role: 'user'
+      mobile_no,
+      role: 'user',
+      is_email_verified: false // Default is false
     });
+
+    // Send verification OTP
+    await OTPService.generateAndSendOTP(email, 'email_verification');
+
+    return {
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        is_email_verified: user.is_email_verified
+      },
+      message: 'User created successfully. Please verify your email with the OTP sent to your email address.'
+    };
   }
 
+  // New method: Verify email with OTP
+  async verifyEmail(email, otp) {
+    try {
+      // Verify OTP
+      await OTPService.verifyOTP(email, otp, 'email_verification');
+
+      // Find and update user
+      const user = await User.findOne({ where: { email } });
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (user.is_email_verified) {
+        throw new Error('Email already verified');
+      }
+
+      // Update user as verified
+      await user.update({ is_email_verified: true });
+
+      // Send welcome email
+      await EmailService.sendWelcomeEmail(email, user.username);
+
+      return {
+        success: true,
+        message: 'Email verified successfully',
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          is_email_verified: user.is_email_verified
+        }
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // New method: Resend verification OTP
+  async resendVerificationOTP(email) {
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (user.is_email_verified) {
+      throw new Error('Email already verified');
+    }
+
+    return await OTPService.generateAndSendOTP(email, 'email_verification');
+  }
+
+  // Regular login (password-based)
   async login(email, password) {
     const user = await User.findOne({ 
       where: { 
@@ -36,6 +108,11 @@ class UserService {
 
     if (!user) {
       throw new Error('Invalid credentials');
+    }
+
+    // Check if email is verified
+    if (!user.is_email_verified) {
+      throw new Error('Please verify your email before logging in');
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password);
@@ -60,22 +137,85 @@ class UserService {
         id: user.id,
         username: user.username,
         email: user.email,
-        role: user.role
+        role: user.role,
+        is_email_verified: user.is_email_verified
       }
     };
   }
 
+  // New method: OTP-based login (request OTP)
+  async requestLoginOTP(email) {
+    const user = await User.findOne({ 
+      where: { 
+        email,
+        is_active: true,
+        is_email_verified: true
+      } 
+    });
+
+    if (!user) {
+      throw new Error('User not found or email not verified');
+    }
+
+    return await OTPService.generateAndSendOTP(email, 'login');
+  }
+
+  // New method: OTP-based login (verify OTP and login)
+  async loginWithOTP(email, otp) {
+    try {
+      // Verify OTP
+      await OTPService.verifyOTP(email, otp, 'login');
+
+      // Find user
+      const user = await User.findOne({ 
+        where: { 
+          email,
+          is_active: true,
+          is_email_verified: true
+        } 
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Generate token
+      const token = jwt.sign(
+        { 
+          id: user.id, 
+          role: user.role 
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      await user.update({ last_login: new Date() });
+
+      return { 
+        token, 
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          is_email_verified: user.is_email_verified
+        }
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Existing methods remain the same...
   async getAllUsers(requestingUser) {
     const queryOptions = {
-      attributes: ['id', 'username', 'email', 'role', 'createdAt', 'last_login']
+      attributes: ['id', 'username', 'email', 'role', 'createdAt', 'last_login', 'is_email_verified', 'user_category', 'coupon_points']
     };
 
-    // Super admin sees all users
     if (requestingUser.role === 'super_admin') {
       return User.findAll(queryOptions);
     }
 
-    // Admin sees non-admin and non-super admin users
     if (requestingUser.role === 'admin') {
       queryOptions.where = {
         role: 'user'
@@ -87,7 +227,6 @@ class UserService {
   }
 
   async updateUserRole(requestingUser, userId, newRole) {
-    // Only super admin can change roles
     if (requestingUser.role !== 'super_admin') {
       throw new Error('Unauthorized to change user roles');
     }
@@ -97,7 +236,6 @@ class UserService {
       throw new Error('User not found');
     }
 
-    // Prevent changing super admin role
     if (user.role === 'super_admin') {
       throw new Error('Cannot modify super admin role');
     }
@@ -120,11 +258,13 @@ class UserService {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    // Admin created by super admin is automatically verified
     return User.create({
       username, 
       email, 
       password: hashedPassword,
-      role: 'admin'
+      role: 'admin',
+      is_email_verified: true
     });
   }
 
@@ -152,7 +292,6 @@ class UserService {
       order: [['createdAt', 'DESC']]
     });
   
-    // Calculate latest firmware version
     const latestAcquisition = await UserProjectAcquisition.findOne({
       where: { userId },
       order: [['firmwareVersion', 'DESC']]

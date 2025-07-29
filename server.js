@@ -1,35 +1,49 @@
+// app.js - Updated with ticket system
 const express = require("express");
 const app = express();
 const morgan = require("morgan");
 const env = require("dotenv");
 const sequelize = require("./config/sequelize");
 const cors = require("cors");
-env.config();
 const path = require('path');
 const fs = require('fs');
+const { performInitialSetup } = require("./services/initial-setup.service");
+
+env.config();
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 
-// Add this right after your other middleware (app.use statements)
+// CORS configuration
 app.use(
   cors({
-    origin: ["http://64.227.138.175:8010", "http://192.168.10.124:8010", "http://localhost:3000","https://api.roboninjaz.com","https://roboninjaz.com"],
+    origin: [
+      "http://64.227.138.175:8010", 
+      "http://192.168.10.124:8010", 
+      "http://localhost:3000",
+      "https://api.roboninjaz.com",
+      "https://roboninjaz.com"
+    ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true
   })
 );
 
+// Static file serving
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/firmware', express.static(path.join(__dirname, 'uploads/firmware')));
 
+// Routes
 app.use("/api/user", require("./routes/user.routes"));
 app.use("/api/projects", require("./routes/project.routes"));
-app.use("/api/user-devices", require("./routes/user-device.routes"));
-// app.use('/api/admin', require('./routes/admin.routes'));
+app.use("/api/user-devices", require("./routes/user-device.routes")); 
 app.use("/api/firmware", require("./routes/fileFirmware.routes"));
+app.use("/api/tickets", require("./routes/ticket.routes"));
+app.use("/api/queries", require("./routes/query.routes"));
 
+// Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({
@@ -39,28 +53,52 @@ app.use((err, req, res, next) => {
   });
 });
 
-
-
+// Test route
 app.get("/test", (req, res) => {
-  res.status(200).send("<h1> Node js project created with Sequelize </h1>");
+  res.status(200).send("<h1>Node.js project created with Sequelize - Ticket System Ready</h1>");
 });
 
 const port = process.env.PORT || 8010;
 
 const startServer = async () => {
   try {
-    // Test database connection and sync models
+    // Test database connection
     await sequelize.authenticate();
-    await sequelize.sync({ alter: false }); // Change to false
+    console.log("Database connection established successfully.");
 
-    console.log("Connected to database");
+    console.log("Model associations defined successfully.");
 
-    app.listen(port,'0.0.0.0', () => {
+    // Sync models with database
+    await sequelize.sync({ 
+      alter: false // Set to true only for development if you want to auto-alter tables
+    });
+    console.log("Database synchronized successfully.");
+
+    // Perform initial setup if needed
+    // await performInitialSetup({ username: 'Admin', email: 'admin@roboninjaz.com', password: 'admin123' });
+
+    // Start server
+    app.listen(port, '0.0.0.0', () => {
       console.log(`Server is running on port ${port}`);
+      console.log(`Ticket system is ready!`);
     });
   } catch (error) {
-    console.log("Error connecting to database:", error);
+    console.error("Error starting server:", error);
+    process.exit(1);
   }
 };
 
 startServer();
+
+// Handle graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  await sequelize.close();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  await sequelize.close();
+  process.exit(0);
+});

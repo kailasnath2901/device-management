@@ -1,3 +1,4 @@
+
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/user.controller');
@@ -8,10 +9,15 @@ const { checkInitialSetup, performInitialSetup } = require('../services/initial-
 router.post('/signup', userController.signup);
 router.post('/login', userController.login);
 
+// New OTP routes
+router.post('/verify-email', userController.verifyEmail);
+router.post('/resend-verification-otp', userController.resendVerificationOTP);
+router.post('/request-login-otp', userController.requestLoginOTP);
+router.post('/login-with-otp', userController.loginWithOTP);
+
 // Initial setup route
 router.post('/initial-setup', async (req, res) => {
   try {
-    // Check if initial setup is already completed
     const isSetupComplete = await checkInitialSetup();
     
     if (isSetupComplete) {
@@ -21,7 +27,6 @@ router.post('/initial-setup', async (req, res) => {
       });
     }
 
-    // Perform initial setup
     const superAdmin = await performInitialSetup(req.body);
     
     res.status(201).json({

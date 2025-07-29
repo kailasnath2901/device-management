@@ -30,7 +30,9 @@ class DeviceController {
 
   async claimDevice(req, res) {
     try {
-      const { serialNumber } = req.body;
+      const { serialNumber, nickName } = req.body;
+    
+      // const { serialNumber } = req.body;
       const userId = req.user.id;
 
       if (!serialNumber) {
@@ -78,7 +80,8 @@ class DeviceController {
       // Claim the device
       const device = await DeviceService.claimDeviceByUser(
         serialNumber,
-        userId
+        userId,
+        nickName
       );
 
       res.json({
@@ -269,6 +272,42 @@ class DeviceController {
       });
     }
   }
+//!-----Check the user added or removed any projects--------------
+  async getIsModified(req, res) {
+    try {
+      const { serialNumber } = req.body;
+      const { reset } = req.body;
+      
+      const isModified = await DeviceService.getIsDeviceModified(
+        serialNumber,reset
+      );
+
+      if (!serialNumber) {
+        return res.status(404).json({
+          success: false,
+          message: "Provide a 'serialNumber' to check modification status",
+        });
+      }
+
+      if (!isModified) {
+        return res.status(404).json({
+          success: false,
+          message: "Error fetching device data",
+        });
+      }
+
+      res.json({
+        success: true,
+        ...isModified
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+  //!--------------------------------------------
 }
 
 module.exports = new DeviceController();

@@ -5,58 +5,39 @@ const projectController = require("../controllers/projects.controller");
 const { authenticate, authorizeRoles } = require("../middleware/auth");
 const fileUpload = require("../middleware/fileUpload");
 
-// Use the new middleware chain
-router.post(
-  "/createProject",
-  authenticate,
-  authorizeRoles("admin", "super_admin"),
-  fileUpload.uploadFields([
-    { name: "image", maxCount: 1 },
-    { name: "files", maxCount: 5 },
-  ]),
-  projectController.createProject
-);
 
-router.put(
-  "/editProject/:projectId",
-  authenticate,
-  fileUpload.uploadFields([
-    { name: "image", maxCount: 1 },
-    { name: "files", maxCount: 5 },
-  ]),
-  projectController.editProject
-);
+// Alternative routing structure with more explicit paths:
 
-// NEW: Get single project (for editing form population)
+// Category routes with prefix
+router.post("/category/create", authenticate, authorizeRoles("admin", "super_admin"), projectController.createCategory);
+router.get("/category/list", authenticate, projectController.getCategories);
+router.get("/category/:id", authenticate, projectController.getCategoryById);
+router.put("/category/:id/update", authenticate, authorizeRoles("admin", "super_admin"), projectController.updateCategory);
+router.delete("/category/:id/delete", authenticate, authorizeRoles("admin", "super_admin"), projectController.deleteCategory);
+
+// Component routes with prefix
+router.post("/component/create", authenticate, authorizeRoles("admin", "super_admin"), projectController.createComponent);
+router.get("/component/list", authenticate, projectController.getComponents);
+router.get("/component/:id", authenticate, projectController.getComponentById);
+router.put("/component/:id/update", authenticate, authorizeRoles("admin", "super_admin"), projectController.updateComponent);
+router.delete("/component/:id/delete", authenticate, authorizeRoles("admin", "super_admin"), projectController.deleteComponent);
+
+// Project routes with prefix
+router.post("/project/create", authenticate, authorizeRoles("admin", "super_admin"), fileUpload.uploadFields([{ name: "images", maxCount: 10 }, { name: "files", maxCount: 20 }]), projectController.createProject);
+router.put("/project/:projectId/edit", authenticate, fileUpload.uploadFields([{ name: "images", maxCount: 10 }, { name: "files", maxCount: 20 }]), projectController.editProject);
 router.get("/project/:projectId", authenticate, projectController.getProject);
+router.get('/search', authenticate, projectController.searchProjects);
+router.get("/project/user/list", authenticate, projectController.getUserProjects);
+router.delete("/project/:projectId/delete", authenticate, authorizeRoles("admin", "super_admin"), projectController.deleteProject);
 
-// Other routes remain the same
-router.get("/getprojects", authenticate, projectController.getUserProjects);
-router.delete(
-  "/deleteProject/:projectId",
-  authenticate,
-  authorizeRoles("admin", "super_admin"),
-  projectController.deleteProject
-);
-router.get(
-  "/download/:fileId",
-  authenticate,
-  projectController.downloadProjectFile
-);
-router.post(
-  "/acquireProject/:projectId",
-  authenticate,
-  projectController.acquireProject
-);
-router.delete(
-  "/remove-acquiredProject/:projectId",
-  authenticate,
-  projectController.removeAcquiredProject
-);
-router.get(
-  "/getAllacquired-projects",
-  authenticate,
-  projectController.getAcquiredProjects
-);
+// File and acquisition routes
+router.get("/file/:fileId/download", authenticate, projectController.downloadProjectFile);
+router.post("/project/:projectId/acquire", authenticate, projectController.acquireProject);
+router.delete("/project/:projectId/remove-acquisition", authenticate, projectController.removeAcquiredProject);
+router.get("/user/acquired-projects", authenticate, projectController.getAcquiredProjects);
+router.get("/user/devices", authenticate, projectController.getUserDevices);
+
+
+
 
 module.exports = router;

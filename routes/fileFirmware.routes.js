@@ -1,22 +1,21 @@
 const express = require("express");
 const router = express.Router();
 const firmwareController = require("../controllers/file-firmware.controller");
-const upload = require("../middleware/firmwareUpload");
+const { upload, handleMulterError } = require("../middleware/firmwareUpload");
 const { authenticate } = require("../middleware/auth");
-const path = require("path");
-const fs = require('fs');
-const controllerPath = path.join(__dirname, '../controllers/file-firmware.controller.js');
-// console.log('Controller exists:', fs.existsSync(controllerPath));
-// // Upload firmware (restricted to admins)
 
-// console.log("routeee",firmwareController.uploadFirmware)
+// Debug: Check if all controller functions exist
+console.log("Available controller functions:", Object.keys(firmwareController));
+
+// Upload firmware (restricted to admins)
 router.post(
   "/upload", 
   authenticate, 
-  upload.uploadFields([
+  upload.fields([
     { name: "firmware", maxCount: 5 },
     { name: "documentation", maxCount: 3 }
   ]),
+  handleMulterError, // Add error handling middleware
   firmwareController.uploadFirmware
 );
 
@@ -29,10 +28,15 @@ router.get("/latest", firmwareController.getLatestFirmware);
 // Get firmware by version
 router.get("/version/:version", firmwareController.getFirmwareByVersion);
 
-// Download firmware file
+// Download firmware file - Fixed URL pattern to match controller
 router.get("/download/:id", firmwareController.downloadFirmware);
 
 // Set a firmware as latest (restricted to admins)
 router.put("/set-latest/:id", authenticate, firmwareController.setLatestFirmware);
+
+// Firmware update flag endpoints
+router.put("/update-flag/set", authenticate, firmwareController.setFirmwareUpdateAvailable);
+router.put("/update-flag/clear", authenticate, firmwareController.clearFirmwareUpdateAvailable);
+router.put("/update-flag/set-all-latest", authenticate, firmwareController.setAllLatestFirmwareUpdateAvailable);
 
 module.exports = router;

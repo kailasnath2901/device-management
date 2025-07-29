@@ -1,7 +1,10 @@
-// model/project.model.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/sequelize");
-const ProjectFile = require("../model/project-files.model");
+const ProjectFile = require("./project-files.model");
+const ProjectImage = require("./projectImage.model");
+const Category = require("./category.model");
+const Component = require("./component.model");
+const ProjectComponent = require("./projectComponent.model");
 
 const Project = sequelize.define(
   "Project",
@@ -21,53 +24,194 @@ const Project = sequelize.define(
     description: {
       type: DataTypes.TEXT,
     },
-    youtubeLink: {
+    // New fields as per requirements
+    whatItIs: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      field: "what_it_is",
+      validate: {
+        notEmpty: true,
+      },
+    },
+    howItWorks: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      field: "how_it_works",
+      validate: {
+        notEmpty: true,
+      },
+    },
+    priceInInr: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      field: "price_in_inr",
+      validate: {
+        min: 0,
+      },
+    },
+    keywordsList: {
+      type: DataTypes.JSON, // Store as JSON array
+      allowNull: false,
+      field: "keywords_list",
+      validate: {
+        notEmpty: true,
+      },
+    },
+    difficulty: {
+      type: DataTypes.ENUM("easy", "medium", "hard"),
+      allowNull: false,
+      defaultValue: "easy",
+    },
+    categoryId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: "category_id",
+      references: {
+        model: "categories",
+        key: "id",
+      },
+    },
+    testAndTroubleshootLink: {
       type: DataTypes.STRING,
+      allowNull: true,
+      field: "test_and_troubleshoot_link",
       validate: {
         isUrl: true,
       },
     },
-    imageUrl: {
+    versionType: {
+      type: DataTypes.ENUM("development", "release"),
+      allowNull: false,
+      field: "version_type",
+      defaultValue: "development",
+    },
+    // Existing fields
+    youtubeLink: {
       type: DataTypes.STRING,
+      field: "youtube_link",
+      validate: {
+        isUrl: true,
+      },
     },
     projectType: {
       type: DataTypes.ENUM("free", "paid"),
       allowNull: false,
+      field: "project_type",
       defaultValue: "free",
     },
     maxAcquisitions: {
       type: DataTypes.INTEGER,
+      field: "max_acquisitions",
       defaultValue: 5,
     },
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
+      field: "user_id",
     },
     version: {
       type: DataTypes.INTEGER,
       defaultValue: 1,
-      allowNull: false
+      allowNull: false,
     },
     lastUpdated: {
       type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW
-    }
+      field: "last_updated",
+      defaultValue: DataTypes.NOW,
+    },
+    // Add soft delete column
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "deleted_at",
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      field: "created_at", // Add this mapping
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      field: "updated_at", // Add this mapping
+    },
+    dashboard: {
+      type: DataTypes.TEXT("long"), // for large JSON string
+      allowNull: true,
+    },
   },
+
   {
     tableName: "projects",
     timestamps: true,
+    paranoid: true,
+    underscored: true,
+    createdAt: "created_at",
+    updatedAt: "updated_at",
+    deletedAt: "deleted_at",
   }
 );
 
+// Define associations
 Project.hasMany(ProjectFile, {
   foreignKey: "projectId",
   as: "files",
-  onDelete: "CASCADE"
+  onDelete: "CASCADE",
+});
+
+Project.hasMany(ProjectImage, {
+  foreignKey: "projectId",
+  as: "images",
+  onDelete: "CASCADE",
+});
+
+Project.belongsTo(Category, {
+  foreignKey: "categoryId",
+  as: "category",
+});
+
+// Many-to-many relationship between Project and Component
+Project.belongsToMany(Component, {
+  through: ProjectComponent,
+  foreignKey: "projectId",
+  otherKey: "componentId",
+  as: "components",
+});
+
+Component.belongsToMany(Project, {
+  through: ProjectComponent,
+  foreignKey: "componentId",
+  otherKey: "projectId",
+  as: "projects",
+});
+
+// Direct access to junction table
+Project.hasMany(ProjectComponent, {
+  foreignKey: "projectId",
+  as: "projectComponents",
 });
 
 ProjectFile.belongsTo(Project, {
   foreignKey: "projectId",
-  as: "project"
+  as: "project",
+});
+
+ProjectImage.belongsTo(Project, {
+  foreignKey: "projectId",
+  as: "project",
+});
+
+Category.hasMany(Project, {
+  foreignKey: "categoryId",
+  as: "projects",
+});
+
+ProjectComponent.belongsTo(Project, {
+  foreignKey: "projectId",
+  as: "project",
+});
+
+ProjectComponent.belongsTo(Component, {
+  foreignKey: "componentId",
+  as: "component",
 });
 
 module.exports = Project;

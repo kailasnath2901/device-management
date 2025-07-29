@@ -2,16 +2,105 @@ const Firmware = require("../model/file-firmware.model");
 const fs = require("fs");
 const path = require("path");
 const { Op } = require("sequelize");
+const AdmZip = require("adm-zip");
 
-// Upload multiple firmware files
-exports.uploadFirmware = async (req, res) => {
+// Helper function to determine file type
+const getFileType = (fileName) => {
+  const ext = path.extname(fileName).toLowerCase();
+  switch (ext) {
+    case '.zip':
+      return 'zip';
+    case '.bin':
+      return 'bin';
+    case '.hex':
+      return 'hex';
+    case '.pdf':
+      return 'other'; // PDFs are documentation, not firmware
+    default:
+      return 'other';
+  }
+};
+
+// Helper function to extract zip file
+const extractZipFile = async (zipPath, extractToPath, version) => {
   try {
-    // Check if we have files
-    if (!req.files || Object.keys(req.files).length === 0) {
-      return res.status(400).json({ success: false, message: "No files uploaded" });
+    const zip = new AdmZip(zipPath);
+    const versionFolder = path.join(extractToPath, `v${version}`);
+    
+    // Create extract base path if it doesn't exist
+    if (!fs.existsSync(extractToPath)) {
+      fs.mkdirSync(extractToPath, { recursive: true });
+    }
+    
+    // Create version folder if it doesn't exist
+    if (!fs.existsSync(versionFolder)) {
+      fs.mkdirSync(versionFolder, { recursive: true });
+    }
+    
+    // Extract all files to version folder
+    zip.extractAllTo(versionFolder, true);
+    
+    console.log(`Files extracted to: ${versionFolder}`);
+    return versionFolder;
+  } catch (error) {
+    console.error("Error extracting zip file:", error);
+    throw error;
+  }
+};
+
+// Upload multiple firmware files with improved handling
+const uploadFirmware = async (req, res) => {
+  try {
+    // Enhanced debugging
+    console.log("=== FIRMWARE UPLOAD DEBUG ===");
+    console.log("req.files:", req.files);
+    console.log("req.file:", req.file);
+    console.log("req.body:", req.body);
+    console.log("Content-Type:", req.get('Content-Type'));
+    
+    // Check for files in req.files (multer standard location)
+    let allFiles = [];
+    
+    if (req.files) {
+      // Handle multiple field names (firmware, documentation, etc.)
+      Object.keys(req.files).forEach(fieldName => {
+        if (Array.isArray(req.files[fieldName])) {
+          allFiles = [...allFiles, ...req.files[fieldName]];
+        } else {
+          allFiles.push(req.files[fieldName]);
+        }
+      });
+    }
+    
+    // If no files found in req.files, check req.file (single file upload)
+    if (allFiles.length === 0 && req.file) {
+      allFiles.push(req.file);
+    }
+    
+    // If still no files found, return error
+    if (allFiles.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "No files uploaded. Please check your form field names match the multer configuration.",
+        debug: {
+          hasReqFiles: !!req.files,
+          hasReqFile: !!req.file,
+          reqFilesKeys: req.files ? Object.keys(req.files) : null,
+          contentType: req.get('Content-Type'),
+          bodyKeys: Object.keys(req.body)
+        }
+      });
     }
 
-    const { version, description, deviceType } = req.body;
+    console.log("Total files found:", allFiles.length);
+    console.log("File details:", allFiles.map(f => ({ 
+      name: f.originalname, 
+      size: f.size, 
+      path: f.path,
+      mimetype: f.mimetype 
+    })));
+
+    const { version, description, deviceType, isLatest } = req.body;
     
     if (!version) {
       return res.status(400).json({ success: false, message: "Version is required" });
@@ -19,47 +108,76 @@ exports.uploadFirmware = async (req, res) => {
 
     // Check if this version already exists
     const existingFirmware = await Firmware.findOne({
-      where: { version }
+      where: { version, deletedAt: null } // Use correct field name
     });
 
     if (existingFirmware) {
-      // Don't overwrite - we'll create new entries
       console.log(`Firmware version ${version} already exists, creating new entries`);
     }
 
     // If this is the first firmware or marked as latest, update all others to not be latest
-    if (req.body.isLatest === 'true' || !(await Firmware.findOne({ where: { isLatest: true } }))) {
-      await Firmware.update({ isLatest: false }, { where: { isLatest: true } });
+    const shouldBeLatest = isLatest === 'true' || isLatest === true;
+    if (shouldBeLatest || !(await Firmware.findOne({ where: { isLatest: true, deletedAt: null } }))) {
+      await Firmware.update({ isLatest: false }, { where: { isLatest: true, deletedAt: null } });
     }
-
-    // Get all uploaded files (from all fields)
-    let allFiles = [];
-    Object.keys(req.files).forEach(fieldName => {
-      allFiles = [...allFiles, ...req.files[fieldName]];
-    });
 
     // Create firmware entries for each file
     const firmwareEntries = [];
+    const extractBasePath = path.join(__dirname, '../../firmware_extracted');
+    
     for (const file of allFiles) {
-      // Create new firmware entry
+      console.log(`Processing file: ${file.originalname}`);
+      
+      const fileType = getFileType(file.originalname);
+      let extractPath = null;
+      let isZipExtracted = false;
+      let originalZipDeleted = false;
+      
+      // Use the file path from multer
+      const filePath = file.path;
+
+      // Handle zip file extraction
+      if (fileType === 'zip') {
+        try {
+          extractPath = await extractZipFile(filePath, extractBasePath, version);
+          isZipExtracted = true;
+          
+          // Delete original zip file after extraction to save space
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            originalZipDeleted = true;
+          }
+        } catch (error) {
+          console.error("Error extracting zip file:", error);
+          // Continue with zip file if extraction fails
+        }
+      }
+
+      // Create new firmware entry with correct field mapping
       const firmware = await Firmware.create({
         version,
-        fileName: file.originalname,
-        filePath: file.path,
-        extractPath: file.isExtracted ? file.extractPath : null,
-        isLatest: req.body.isLatest === 'true' ? true : false,
+        fileName: file.originalname, // Maps to file_name
+        filePath: originalZipDeleted ? null : filePath, // Maps to file_path
+        extractPath, // Maps to extract_path
+        isLatest: shouldBeLatest, // Maps to is_latest
         description: description || null,
-        fileSize: file.size,
-        deviceType: deviceType || null,
-        isZipExtracted: file.isExtracted || false
+        fileSize: file.size, // This will map to file_size (from model definition)
+        deviceType: deviceType || null, // Maps to device_type
+        isZipExtracted, // Maps to is_zip_extracted
+        fileType,
+        originalZipDeleted,
+        firmwareUpdateAvailable: false
       });
       
       firmwareEntries.push({
         id: firmware.id,
         version: firmware.version,
         fileName: firmware.fileName,
+        fileType: firmware.fileType,
         uploadedAt: firmware.uploadedAt,
-        isZipExtracted: firmware.isZipExtracted
+        isZipExtracted: firmware.isZipExtracted,
+        extractPath: firmware.extractPath,
+        originalZipDeleted: firmware.originalZipDeleted
       });
     }
 
@@ -70,24 +188,32 @@ exports.uploadFirmware = async (req, res) => {
     });
   } catch (error) {
     console.error("Error uploading firmware:", error);
-    return res.status(500).json({ success: false, message: "Error uploading firmware", error: error.message });
+    return res.status(500).json({ 
+      success: false, 
+      message: "Error uploading firmware", 
+      error: error.message 
+    });
   }
 };
 
-// Example for getAllFirmware
-exports.getAllFirmware = async (req, res) => {
-
-  const baseUrl ='https://roboninjaz.com/api';
+// Get all firmware with improved data
+const getAllFirmware = async (req, res) => {
+  const baseUrl = 'https://roboninjaz.com/api';
   try {
     const firmware = await Firmware.findAll({
-      attributes: ['id', 'version', 'fileName', 'uploadedAt', 'isLatest', 'description', 'deviceType', 'isZipExtracted', 'extractPath'],
+      where: { deletedAt: null }, // Use correct field name
+      attributes: [
+        'id', 'version', 'fileName', 'uploadedAt', 'isLatest', 
+        'description', 'deviceType', 'isZipExtracted', 'extractPath',
+        'fileType', 'originalZipDeleted', 'firmwareUpdateAvailable'
+      ],
       order: [['version', 'DESC']]
     });
 
     // Add download URL to each firmware
     const firmwareWithUrls = firmware.map(fw => ({
       ...fw.toJSON(),
-      downloadUrl: `${baseUrl}/firmware/${fw.version}`
+      downloadUrl: `${baseUrl}/firmware/download/${fw.id}`
     }));
 
     return res.status(200).json({
@@ -99,11 +225,12 @@ exports.getAllFirmware = async (req, res) => {
     return res.status(500).json({ success: false, message: "Error getting firmware", error: error.message });
   }
 };
-// Get latest firmware version
-exports.getLatestFirmware = async (req, res) => {
+
+// Get latest firmware version with enhanced data
+const getLatestFirmware = async (req, res) => {
   try {
     const deviceType = req.query.deviceType;
-    const whereClause = { isLatest: true };
+    const whereClause = { isLatest: true, deletedAt: null }; // Use correct field name
     
     if (deviceType) {
       whereClause.deviceType = deviceType;
@@ -111,7 +238,12 @@ exports.getLatestFirmware = async (req, res) => {
     
     const latestFirmware = await Firmware.findAll({
       where: whereClause,
-      attributes: ['id', 'version', 'fileName', 'uploadedAt', 'description', 'deviceType', 'isZipExtracted', 'extractPath']
+      attributes: [
+        'id', 'version', 'fileName', 'uploadedAt', 'description', 
+        'deviceType', 'isZipExtracted', 'extractPath', 'fileType',
+        'originalZipDeleted', 'firmwareUpdateAvailable'
+      ],
+      order: [['uploadedAt', 'DESC']]
     });
 
     if (!latestFirmware || latestFirmware.length === 0) {
@@ -120,7 +252,8 @@ exports.getLatestFirmware = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: latestFirmware
+      data: latestFirmware,
+      updateAvailable: latestFirmware.some(fw => fw.firmwareUpdateAvailable)
     });
   } catch (error) {
     console.error("Error getting latest firmware:", error);
@@ -128,20 +261,132 @@ exports.getLatestFirmware = async (req, res) => {
   }
 };
 
-// Download firmware file
-exports.downloadFirmware = async (req, res) => {
+// Set firmware update available flag
+const setFirmwareUpdateAvailable = async (req, res) => {
+  try {
+    const { version, deviceType } = req.body;
+    
+    if (!version) {
+      return res.status(400).json({ success: false, message: "Version is required" });
+    }
+
+    const whereClause = { version, deletedAt: null }; // Use correct field name
+    if (deviceType) {
+      whereClause.deviceType = deviceType;
+    }
+
+    const [updatedCount] = await Firmware.update(
+      { firmwareUpdateAvailable: true },
+      { where: whereClause }
+    );
+
+    if (updatedCount === 0) {
+      return res.status(404).json({ success: false, message: "No firmware found to update" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Firmware update flag set for ${updatedCount} firmware(s)`,
+      data: { version, deviceType, firmwareUpdateAvailable: true }
+    });
+  } catch (error) {
+    console.error("Error setting firmware update flag:", error);
+    return res.status(500).json({ success: false, message: "Error setting firmware update flag", error: error.message });
+  }
+};
+
+// Clear firmware update available flag
+const clearFirmwareUpdateAvailable = async (req, res) => {
+  try {
+    const { version, deviceType } = req.body;
+    
+    if (!version) {
+      return res.status(400).json({ success: false, message: "Version is required" });
+    }
+
+    const whereClause = { version, deletedAt: null }; // Use correct field name
+    if (deviceType) {
+      whereClause.deviceType = deviceType;
+    }
+
+    const [updatedCount] = await Firmware.update(
+      { firmwareUpdateAvailable: false },
+      { where: whereClause }
+    );
+
+    if (updatedCount === 0) {
+      return res.status(404).json({ success: false, message: "No firmware found to update" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Firmware update flag cleared for ${updatedCount} firmware(s)`,
+      data: { version, deviceType, firmwareUpdateAvailable: false }
+    });
+  } catch (error) {
+    console.error("Error clearing firmware update flag:", error);
+    return res.status(500).json({ success: false, message: "Error clearing firmware update flag", error: error.message });
+  }
+};
+
+// Set firmware update available for all latest firmware
+const setAllLatestFirmwareUpdateAvailable = async (req, res) => {
+  try {
+    const { deviceType } = req.body;
+    
+    const whereClause = { isLatest: true, deletedAt: null }; // Use correct field name
+    if (deviceType) {
+      whereClause.deviceType = deviceType;
+    }
+
+    const [updatedCount] = await Firmware.update(
+      { firmwareUpdateAvailable: true },
+      { where: whereClause }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Firmware update flag set for ${updatedCount} latest firmware(s)`,
+      data: { deviceType, firmwareUpdateAvailable: true }
+    });
+  } catch (error) {
+    console.error("Error setting all latest firmware update flag:", error);
+    return res.status(500).json({ success: false, message: "Error setting all latest firmware update flag", error: error.message });
+  }
+};
+
+// Enhanced download firmware with support for extracted files
+const downloadFirmware = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const firmware = await Firmware.findByPk(id);
+    const firmware = await Firmware.findOne({
+      where: { id, deletedAt: null } // Use correct field name
+    });
     
     if (!firmware) {
       return res.status(404).json({ success: false, message: "Firmware not found" });
     }
     
+    // If it's an extracted zip file, return the extract path info
+    if (firmware.isZipExtracted && firmware.originalZipDeleted) {
+      return res.status(200).json({
+        success: true,
+        message: "Firmware is extracted",
+        data: {
+          version: firmware.version,
+          extractPath: firmware.extractPath,
+          fileType: firmware.fileType,
+          isZipExtracted: true,
+          originalZipDeleted: true
+        }
+      });
+    }
+    
+    // For regular files, download normally
     const filePath = firmware.filePath;
     
-    if (!fs.existsSync(filePath)) {
+    if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({ success: false, message: "File not found" });
     }
     
@@ -152,14 +397,19 @@ exports.downloadFirmware = async (req, res) => {
   }
 };
 
-// Get firmware by version
-exports.getFirmwareByVersion = async (req, res) => {
+// Get firmware by version with enhanced data
+const getFirmwareByVersion = async (req, res) => {
   try {
     const { version } = req.params;
     
     const firmware = await Firmware.findAll({
-      where: { version },
-      attributes: ['id', 'version', 'fileName', 'uploadedAt', 'description', 'deviceType', 'isZipExtracted', 'extractPath']
+      where: { version, deletedAt: null }, // Use correct field name
+      attributes: [
+        'id', 'version', 'fileName', 'uploadedAt', 'description', 
+        'deviceType', 'isZipExtracted', 'extractPath', 'fileType',
+        'originalZipDeleted', 'firmwareUpdateAvailable'
+      ],
+      order: [['uploadedAt', 'DESC']]
     });
     
     if (!firmware || firmware.length === 0) {
@@ -168,7 +418,8 @@ exports.getFirmwareByVersion = async (req, res) => {
     
     return res.status(200).json({
       success: true,
-      data: firmware
+      data: firmware,
+      updateAvailable: firmware.some(fw => fw.firmwareUpdateAvailable)
     });
   } catch (error) {
     console.error("Error getting firmware by version:", error);
@@ -176,19 +427,24 @@ exports.getFirmwareByVersion = async (req, res) => {
   }
 };
 
-// Set a firmware as latest
-exports.setLatestFirmware = async (req, res) => {
+// Set a firmware as latest with enhanced logic
+const setLatestFirmware = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const firmware = await Firmware.findByPk(id);
+    const firmware = await Firmware.findOne({
+      where: { id, deletedAt: null } // Use correct field name
+    });
     
     if (!firmware) {
       return res.status(404).json({ success: false, message: "Firmware not found" });
     }
     
     // Update all firmware to not be latest
-    await Firmware.update({ isLatest: false }, { where: { isLatest: true } });
+    await Firmware.update(
+      { isLatest: false }, 
+      { where: { isLatest: true, deletedAt: null } }
+    );
     
     // Set this firmware as latest
     firmware.isLatest = true;
@@ -201,7 +457,9 @@ exports.setLatestFirmware = async (req, res) => {
         id: firmware.id,
         version: firmware.version,
         fileName: firmware.fileName,
-        uploadedAt: firmware.uploadedAt
+        uploadedAt: firmware.uploadedAt,
+        fileType: firmware.fileType,
+        isZipExtracted: firmware.isZipExtracted
       }
     });
   } catch (error) {
@@ -210,4 +468,15 @@ exports.setLatestFirmware = async (req, res) => {
   }
 };
 
-module.exports = exports;
+// Export all functions properly
+module.exports = {
+  uploadFirmware,
+  getAllFirmware,
+  getLatestFirmware,
+  setFirmwareUpdateAvailable,
+  clearFirmwareUpdateAvailable,
+  setAllLatestFirmwareUpdateAvailable,
+  downloadFirmware,
+  getFirmwareByVersion,
+  setLatestFirmware
+};

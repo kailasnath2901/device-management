@@ -5,100 +5,444 @@ const ProjectFile = require("../model/project-files.model");
 const Project = require("../model/project.model");
 const UserProjectAcquisition = require("../model/user-project-acquisition.model");
 const mime = require("mime-types");
-const FileDownloadLog = require("../model/filedownloadlog");
+const ProjectImage = require("../model/projectImage.model");
+const Category = require("../model/category.model");
+const ProjectComponent = require("../model/projectComponent.model");
+const Component = require("../model/component.model");
 
 class ProjectController {
+  async createCategory(req, res) {
+    try {
+      const { name, description } = req.body;
+
+      if (!name) {
+        return res.status(400).json({
+          success: false,
+          message: "Category name is required",
+        });
+      }
+
+      const category = await ProjectService.createCategory({
+        name,
+        description,
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: "Category created successfully",
+        category,
+      });
+    } catch (error) {
+      console.error("Error creating category:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  async getCategories(req, res) {
+    try {
+      const { page = 1, limit = 10 } = req.query;
+      const result = await ProjectService.getCategories({ page, limit });
+
+      return res.status(200).json({
+        success: true,
+        ...result,
+      });
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  async getCategoryById(req, res) {
+    try {
+      const { id } = req.params;
+      const category = await ProjectService.getCategoryById(id);
+
+      return res.status(200).json({
+        success: true,
+        category,
+      });
+    } catch (error) {
+      console.error("Error fetching category:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  async updateCategory(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const category = await ProjectService.updateCategory(id, updateData);
+
+      return res.status(200).json({
+        success: true,
+        message: "Category updated successfully",
+        category,
+      });
+    } catch (error) {
+      console.error("Error updating category:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  async deleteCategory(req, res) {
+    try {
+      const { id } = req.params;
+      const result = await ProjectService.deleteCategory(id);
+
+      return res.status(200).json({
+        success: true,
+        message: result.message,
+      });
+    } catch (error) {
+      console.error("Error deleting category:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  // Component CRUD operations
+  async createComponent(req, res) {
+    try {
+      const { name, description, specifications } = req.body;
+
+      if (!name) {
+        return res.status(400).json({
+          success: false,
+          message: "Component name is required",
+        });
+      }
+
+      const component = await ProjectService.createComponent({
+        name,
+        description,
+        specifications,
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: "Component created successfully",
+        component,
+      });
+    } catch (error) {
+      console.error("Error creating component:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  async getComponents(req, res) {
+    try {
+      const { page = 1, limit = 10 } = req.query;
+      const result = await ProjectService.getComponents({ page, limit });
+
+      return res.status(200).json({
+        success: true,
+        ...result,
+      });
+    } catch (error) {
+      console.error("Error fetching components:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  async getComponentById(req, res) {
+    try {
+      const { id } = req.params;
+      const component = await ProjectService.getComponentById(id);
+
+      return res.status(200).json({
+        success: true,
+        component,
+      });
+    } catch (error) {
+      console.error("Error fetching component:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  async updateComponent(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const component = await ProjectService.updateComponent(id, updateData);
+
+      return res.status(200).json({
+        success: true,
+        message: "Component updated successfully",
+        component,
+      });
+    } catch (error) {
+      console.error("Error updating component:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  async deleteComponent(req, res) {
+    try {
+      const { id } = req.params;
+      const result = await ProjectService.deleteComponent(id);
+
+      return res.status(200).json({
+        success: true,
+        message: result.message,
+      });
+    } catch (error) {
+      console.error("Error deleting component:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  // Project operations
+  // Project operations
   async createProject(req, res) {
     try {
       const userId = req.user.id;
 
+      // Validate required fields
       if (!req.body.name) {
-        return res.status(400).json({ error: "Project name is required" });
+        return res.status(400).json({
+          success: false,
+          message: "Project name is required",
+        });
+      }
+
+      if (!req.body.keywords) {
+        return res.status(400).json({
+          success: false,
+          message: "Keywords are required",
+        });
+      }
+
+      if (!req.body.categoryId) {
+        return res.status(400).json({
+          success: false,
+          message: "Category is required",
+        });
+      }
+
+      // Validate required fields for new schema
+      if (!req.body.whatItIs) {
+        return res.status(400).json({
+          success: false,
+          message: "whatItIs field is required",
+        });
+      }
+
+      if (!req.body.howItWorks) {
+        return res.status(400).json({
+          success: false,
+          message: "howItWorks field is required",
+        });
+      }
+
+      // Parse and validate keywords - convert string to array
+      let keywordsList = [];
+      if (req.body.keywords) {
+        try {
+          // If keywords is a string, split it by comma and clean up
+          if (typeof req.body.keywords === "string") {
+            keywordsList = req.body.keywords
+              .split(",")
+              .map((keyword) => keyword.trim())
+              .filter((keyword) => keyword.length > 0);
+          } else if (Array.isArray(req.body.keywords)) {
+            keywordsList = req.body.keywords;
+          } else {
+            throw new Error("Invalid keywords format");
+          }
+        } catch (e) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid keywords format. Please provide comma-separated keywords or an array.",
+          });
+        }
+      }
+
+      if (keywordsList.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "At least one keyword is required",
+        });
+      }
+
+      // Parse required components if provided
+      let requiredComponents = [];
+      if (req.body.requiredComponents) {
+        try {
+          requiredComponents = JSON.parse(req.body.requiredComponents);
+        } catch (e) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid required components format",
+          });
+        }
+      }
+
+      if (req.body.dashboard) {
+        try {
+          JSON.parse(req.body.dashboard); // just to validate
+        } catch (e) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid dashboard JSON format.",
+          });
+        }
       }
 
       const projectData = {
         name: req.body.name,
         description: req.body.description,
+        keywordsList: keywordsList, // Use keywordsList instead of keywords
+        whatItIs: req.body.whatItIs,
+        howItWorks: req.body.howItWorks,
+        priceInInr: req.body.priceInInr || null,
+        difficulty: req.body.difficulty || "easy",
+        categoryId: req.body.categoryId,
+        testAndTroubleshootLink: req.body.testLink || req.body.troubleshootLink, // Handle both field names
+        versionType: req.body.versionType || "development",
         youtubeLink: req.body.youtubeLink,
         projectType: req.body.projectType || "free",
         maxAcquisitions: req.body.maxAcquisitions || 5,
         lastUpdated: new Date(),
-      };
-
-      // Handle image file
-      if (req.files && req.files.image && req.files.image[0]) {
-        projectData.imageUrl = `/images/projects/${req.files.image[0].filename}`;
-      }
-
-      const project = await Project.create({
-        ...projectData,
         version: 1,
         userId,
-      });
+        dashboard: req.body.dashboard || null,
+      };
 
-      // Process ALL files (excluding image field)
-      let allFiles = [];
+      // Create project
+      const project = await Project.create(projectData);
 
-      if (req.files) {
-        // Get all files except image files
-        Object.keys(req.files).forEach((fieldName) => {
-          if (fieldName !== "image") {
-            // Skip image field as it's handled separately
-            allFiles = allFiles.concat(req.files[fieldName]);
-          }
-        });
+      // Create project folder
+      const projectFolder = path.join(
+        process.cwd(),
+        "public",
+        "projects",
+        project.id.toString()
+      );
+      if (!fs.existsSync(projectFolder)) {
+        fs.mkdirSync(projectFolder, { recursive: true });
+      }
 
-        // Also handle if files are directly in req.files array (not organized by field)
-        if (Array.isArray(req.files)) {
-          allFiles = allFiles.concat(
-            req.files.filter(
-              (file) => !file.fieldname || file.fieldname !== "image"
-            )
-          );
+      // Handle multiple images
+      if (req.files && req.files.images) {
+        const imageFolder = path.join(projectFolder, "images");
+        if (!fs.existsSync(imageFolder)) {
+          fs.mkdirSync(imageFolder, { recursive: true });
         }
-      }
 
-      console.log("Files to process:", allFiles.length); // Debug log
+        const imagePromises = req.files.images.map(async (imageFile) => {
+          const imagePath = path.join(imageFolder, imageFile.filename);
+          // Move file to project folder
+          fs.renameSync(imageFile.path, imagePath);
 
-      if (allFiles.length > 0) {
-        const projectFilesData = allFiles.map((file) => {
-          console.log("Processing file:", file.originalname, file.isExtracted); // Debug log
-
-          if (file.isExtracted && file.extractPath) {
-            return {
-              projectId: project.id,
-              filename: path.basename(file.originalname, ".zip"),
-              fileType: "directory",
-              fileSize: file.size,
-              filePath: file.extractPath,
-              mimetype: "application/directory",
-              isZipExtracted: true,
-              originalZipName: file.originalname,
-            };
-          } else {
-            return {
-              projectId: project.id,
-              filename: file.filename || file.originalname,
-              fileType: path.extname(file.originalname),
-              fileSize: file.size,
-              filePath: file.path,
-              mimetype: file.mimetype,
-              isZipExtracted: false,
-              originalZipName: null,
-            };
-          }
+          return ProjectImage.create({
+            projectId: project.id,
+            filename: imageFile.filename,
+            originalName: imageFile.originalname,
+            filePath: imagePath,
+            publicUrl: `/projects/${project.id}/images/${imageFile.filename}`,
+            fileSize: imageFile.size,
+            mimetype: imageFile.mimetype,
+          });
         });
 
-        await ProjectFile.bulkCreate(projectFilesData);
-        console.log("Created project files:", projectFilesData.length); // Debug log
+        await Promise.all(imagePromises);
       }
 
-      // Fetch the complete project with files (like in ProjectService)
+      // Handle project files
+      if (req.files && req.files.files) {
+        const invalidFiles = req.files.files.filter(
+          (file) => !file.originalname
+        );
+        if (invalidFiles.length > 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Some files are missing original names",
+          });
+        }
+        const filesPromises = req.files.files.map(async (file) => {
+          const filePath = path.join(projectFolder, file.filename);
+          // Move file to project folder
+          fs.renameSync(file.path, filePath);
+
+          return ProjectFile.create({
+            projectId: project.id,
+            filename: file.filename,
+            originalName: file.originalname, // This is required and can't be null
+            fileType: path.extname(file.originalname),
+            fileSize: file.size,
+            filePath: filePath,
+            mimetype: file.mimetype,
+            isZipExtracted: false,
+            originalZipName: null,
+          });
+        });
+
+        await Promise.all(filesPromises);
+      }
+
+      // Handle required components
+      if (requiredComponents.length > 0) {
+        const componentPromises = requiredComponents.map((componentId) =>
+          ProjectComponent.create({
+            projectId: project.id,
+            componentId: componentId,
+          })
+        );
+        await Promise.all(componentPromises);
+      }
+
+      // Fetch complete project with all associations
       const completeProject = await Project.findByPk(project.id, {
         include: [
           {
             model: ProjectFile,
-            as: "files", // Make sure this matches your association alias
+            as: "files",
+          },
+          {
+            model: ProjectImage,
+            as: "images",
+          },
+          {
+            model: Category,
+            as: "category",
+          },
+          {
+            model: Component,
+            as: "components",
+            through: { attributes: [] },
           },
         ],
       });
@@ -106,11 +450,14 @@ class ProjectController {
       return res.status(201).json({
         success: true,
         message: "Project created successfully",
-        project: completeProject, // Return complete project with files
+        project: completeProject,
       });
     } catch (error) {
       console.error("Error creating project:", error);
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
     }
   }
 
@@ -127,6 +474,19 @@ class ProjectController {
             model: ProjectFile,
             as: "files",
           },
+          {
+            model: ProjectImage,
+            as: "images",
+          },
+          {
+            model: Category,
+            as: "category",
+          },
+          {
+            model: Component,
+            as: "components",
+            through: { attributes: [] },
+          },
         ],
       });
 
@@ -138,42 +498,114 @@ class ProjectController {
       }
 
       // Authorization check
-      if (userRole !== "admin" && userRole !== "super_admin" && existingProject.userId !== userId) {
+      if (
+        userRole !== "admin" &&
+        userRole !== "super_admin" &&
+        existingProject.userId !== userId
+      ) {
         return res.status(403).json({
           success: false,
-          message: "Unauthorized. You can only edit your own projects or be an admin.",
+          message:
+            "Unauthorized. You can only edit your own projects or be an admin.",
         });
       }
 
       // Prepare update data
-      const updateData = {};
-      if (req.body.name) updateData.name = req.body.name;
-      if (req.body.description !== undefined) updateData.description = req.body.description;
-      if (req.body.youtubeLink !== undefined) updateData.youtubeLink = req.body.youtubeLink;
-      if (req.body.projectType) updateData.projectType = req.body.projectType;
-      if (req.body.maxAcquisitions) updateData.maxAcquisitions = req.body.maxAcquisitions;
-      updateData.lastUpdated = new Date();
+      const updateData = {
+        lastUpdated: new Date(),
+      };
 
-      // Handle image update
-      if (req.files && req.files.image && req.files.image[0]) {
-        // Delete old image if exists
-        if (existingProject.imageUrl) {
-          const oldImagePath = path.join(process.cwd(), 'public', existingProject.imageUrl);
-          if (fs.existsSync(oldImagePath)) {
-            fs.unlinkSync(oldImagePath);
-          }
-        }
-        updateData.imageUrl = `/images/projects/${req.files.image[0].filename}`;
-      }
+      // Update fields if provided
+      if (req.body.name) updateData.name = req.body.name;
+      if (req.body.description !== undefined)
+        updateData.description = req.body.description;
+      if (req.body.keywords !== undefined)
+        updateData.keywords = req.body.keywords;
+      if (req.body.whatItIs !== undefined)
+        updateData.whatItIs = req.body.whatItIs;
+      if (req.body.howItWorks !== undefined)
+        updateData.howItWorks = req.body.howItWorks;
+      if (req.body.priceInInr !== undefined)
+        updateData.priceInInr = req.body.priceInInr;
+      if (req.body.difficulty !== undefined)
+        updateData.difficulty = req.body.difficulty;
+      if (req.body.categoryId !== undefined)
+        updateData.categoryId = req.body.categoryId;
+      if (req.body.testLink !== undefined)
+        updateData.testLink = req.body.testLink;
+      if (req.body.troubleshootLink !== undefined)
+        updateData.troubleshootLink = req.body.troubleshootLink;
+      if (req.body.versionType !== undefined)
+        updateData.versionType = req.body.versionType;
+      if (req.body.youtubeLink !== undefined)
+        updateData.youtubeLink = req.body.youtubeLink;
+      if (req.body.projectType !== undefined)
+        updateData.projectType = req.body.projectType;
+      if (req.body.maxAcquisitions !== undefined)
+        updateData.maxAcquisitions = req.body.maxAcquisitions;
 
       // Update project basic info
       await existingProject.update(updateData);
 
+      const projectFolder = path.join(
+        process.cwd(),
+        "public",
+        "projects",
+        projectId.toString()
+      );
+
+      // Handle image updates
+      let imagesToDelete = [];
+      if (req.body.imagesToDelete) {
+        try {
+          imagesToDelete = JSON.parse(req.body.imagesToDelete);
+        } catch (e) {
+          console.error("Error parsing imagesToDelete:", e);
+        }
+      }
+
+      // Delete specified images
+      if (imagesToDelete.length > 0) {
+        for (const imageId of imagesToDelete) {
+          const imageToDelete = await ProjectImage.findByPk(imageId);
+          if (imageToDelete && imageToDelete.projectId === existingProject.id) {
+            // Delete physical file
+            if (fs.existsSync(imageToDelete.filePath)) {
+              fs.unlinkSync(imageToDelete.filePath);
+            }
+            // Delete from database
+            await imageToDelete.destroy();
+          }
+        }
+      }
+
+      // Handle new images
+      if (req.files && req.files.images) {
+        const imageFolder = path.join(projectFolder, "images");
+        if (!fs.existsSync(imageFolder)) {
+          fs.mkdirSync(imageFolder, { recursive: true });
+        }
+
+        const imagePromises = req.files.images.map(async (imageFile) => {
+          const imagePath = path.join(imageFolder, imageFile.filename);
+          fs.renameSync(imageFile.path, imagePath);
+
+          return ProjectImage.create({
+            projectId: existingProject.id,
+            filename: imageFile.filename,
+            originalName: imageFile.originalname,
+            filePath: imagePath,
+            publicUrl: `/projects/${existingProject.id}/images/${imageFile.filename}`,
+            fileSize: imageFile.size,
+            mimetype: imageFile.mimetype,
+          });
+        });
+
+        await Promise.all(imagePromises);
+      }
+
       // Handle files update
       let filesToDelete = [];
-      let newFiles = [];
-
-      // Parse files to delete (sent as JSON string in body)
       if (req.body.filesToDelete) {
         try {
           filesToDelete = JSON.parse(req.body.filesToDelete);
@@ -187,15 +619,9 @@ class ProjectController {
         for (const fileId of filesToDelete) {
           const fileToDelete = await ProjectFile.findByPk(fileId);
           if (fileToDelete && fileToDelete.projectId === existingProject.id) {
-            // Delete physical file/directory
+            // Delete physical file
             if (fs.existsSync(fileToDelete.filePath)) {
-              if (fileToDelete.isZipExtracted) {
-                // Delete directory recursively
-                fs.rmSync(fileToDelete.filePath, { recursive: true, force: true });
-              } else {
-                // Delete single file
-                fs.unlinkSync(fileToDelete.filePath);
-              }
+              fs.unlinkSync(fileToDelete.filePath);
             }
             // Delete from database
             await fileToDelete.destroy();
@@ -203,60 +629,71 @@ class ProjectController {
         }
       }
 
-      // Process new files (excluding image field)
-      if (req.files) {
-        Object.keys(req.files).forEach((fieldName) => {
-          if (fieldName !== "image") {
-            newFiles = newFiles.concat(req.files[fieldName]);
-          }
+      // Handle new files
+      if (req.files && req.files.files) {
+        const filesPromises = req.files.files.map(async (file) => {
+          const filePath = path.join(projectFolder, file.filename);
+          fs.renameSync(file.path, filePath);
+
+          return ProjectFile.create({
+            projectId: existingProject.id,
+            filename: file.filename || file.originalname,
+            fileType: path.extname(file.originalname),
+            fileSize: file.size,
+            filePath: filePath,
+            mimetype: file.mimetype,
+            isZipExtracted: false,
+            originalZipName: null,
+          });
         });
 
-        if (Array.isArray(req.files)) {
-          newFiles = newFiles.concat(
-            req.files.filter(
-              (file) => !file.fieldname || file.fieldname !== "image"
-            )
-          );
+        await Promise.all(filesPromises);
+      }
+
+      // Handle required components update
+      if (req.body.requiredComponents) {
+        try {
+          const requiredComponents = JSON.parse(req.body.requiredComponents);
+
+          // Remove existing components
+          await ProjectComponent.destroy({
+            where: { projectId: existingProject.id },
+          });
+
+          // Add new components
+          if (requiredComponents.length > 0) {
+            const componentPromises = requiredComponents.map((componentId) =>
+              ProjectComponent.create({
+                projectId: existingProject.id,
+                componentId: componentId,
+              })
+            );
+            await Promise.all(componentPromises);
+          }
+        } catch (e) {
+          console.error("Error updating required components:", e);
         }
       }
 
-      // Add new files to database
-      if (newFiles.length > 0) {
-        const projectFilesData = newFiles.map((file) => {
-          if (file.isExtracted && file.extractPath) {
-            return {
-              projectId: existingProject.id,
-              filename: path.basename(file.originalname, ".zip"),
-              fileType: "directory",
-              fileSize: file.size,
-              filePath: file.extractPath,
-              mimetype: "application/directory",
-              isZipExtracted: true,
-              originalZipName: file.originalname,
-            };
-          } else {
-            return {
-              projectId: existingProject.id,
-              filename: file.filename || file.originalname,
-              fileType: path.extname(file.originalname),
-              fileSize: file.size,
-              filePath: file.path,
-              mimetype: file.mimetype,
-              isZipExtracted: false,
-              originalZipName: null,
-            };
-          }
-        });
-
-        await ProjectFile.bulkCreate(projectFilesData);
-      }
-
-      // Fetch updated project with files
+      // Fetch updated project with all associations
       const updatedProject = await Project.findByPk(projectId, {
         include: [
           {
             model: ProjectFile,
             as: "files",
+          },
+          {
+            model: ProjectImage,
+            as: "images",
+          },
+          {
+            model: Category,
+            as: "category",
+          },
+          {
+            model: Component,
+            as: "components",
+            through: { attributes: [] },
           },
         ],
       });
@@ -275,7 +712,6 @@ class ProjectController {
     }
   }
 
- // NEW: Get single project for editing
   async getProject(req, res) {
     try {
       const { projectId } = req.params;
@@ -288,6 +724,19 @@ class ProjectController {
             model: ProjectFile,
             as: "files",
           },
+          {
+            model: ProjectImage,
+            as: "images",
+          },
+          {
+            model: Category,
+            as: "category",
+          },
+          {
+            model: Component,
+            as: "components",
+            through: { attributes: [] },
+          },
         ],
       });
 
@@ -299,7 +748,11 @@ class ProjectController {
       }
 
       // Authorization check for viewing
-      if (userRole !== "admin" && userRole !== "super_admin" && project.userId !== userId) {
+      if (
+        userRole !== "admin" &&
+        userRole !== "super_admin" &&
+        project.userId !== userId
+      ) {
         return res.status(403).json({
           success: false,
           message: "Unauthorized to view this project",
@@ -319,7 +772,55 @@ class ProjectController {
     }
   }
 
-  
+  async searchProjects(req, res) {
+    console.log("Search query parameters:", req.query);
+    console.log("Request path:", req.path);
+    try {
+      const {
+        keyword,
+        componentId,
+        projectName,
+        projectId,
+        categoryId,
+        difficulty,
+        projectType,
+        page = 1,
+        limit = 10,
+      } = req.query;
+
+      // Use the service layer
+      const result = await ProjectService.searchProjects(
+        {
+          keyword,
+          componentId,
+          projectName,
+          projectId,
+          categoryId,
+          difficulty,
+          projectType,
+        },
+        { page, limit }
+      );
+
+      return res.status(200).json({
+        success: true,
+        projects: result.projects,
+        pagination: {
+          currentPage: result.currentPage,
+          totalPages: result.totalPages,
+          totalProjects: result.totalProjects,
+          limit: parseInt(limit),
+        },
+      });
+    } catch (error) {
+      console.error("Error searching projects:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
   async getUserProjects(req, res) {
     try {
       const userId = req.user.id;
@@ -355,6 +856,39 @@ class ProjectController {
         });
       }
 
+      // Find the project first
+      const project = await Project.findByPk(projectId, {
+        include: [
+          {
+            model: ProjectFile,
+            as: "files",
+          },
+          {
+            model: ProjectImage,
+            as: "images",
+          },
+        ],
+      });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message: "Project not found",
+        });
+      }
+
+      // Delete project folder and all its contents
+      const projectFolder = path.join(
+        process.cwd(),
+        "public",
+        "projects",
+        projectId.toString()
+      );
+      if (fs.existsSync(projectFolder)) {
+        fs.rmSync(projectFolder, { recursive: true, force: true });
+      }
+
+      // Delete from database (this will cascade to related tables)
       const result = await ProjectService.deleteProject(
         projectId,
         req.user.id,
@@ -363,10 +897,11 @@ class ProjectController {
 
       res.json({
         success: true,
-        message: "Project deleted successfully",
+        message: "Project and all associated files deleted successfully",
         result,
       });
     } catch (error) {
+      console.error("Error deleting project:", error);
       res.status(500).json({
         success: false,
         message: error.message,
@@ -398,7 +933,6 @@ class ProjectController {
       }
 
       // Check if user is authenticated
-      // Any logged-in user can download
       if (!req.user) {
         return res.status(401).json({
           success: false,
@@ -428,12 +962,12 @@ class ProjectController {
       const fileStream = fs.createReadStream(file.filePath);
       fileStream.pipe(res);
 
-      //   // Optional: Log download activity
-      //   await FileDownloadLog.create({
-      //     userId: req.user.id,
-      //     fileId: file.id,
-      //     downloadedAt: new Date()
-      //   });
+      // Optional: Log download activity
+      // await FileDownloadLog.create({
+      //   userId: req.user.id,
+      //   fileId: file.id,
+      //   downloadedAt: new Date()
+      // });
     } catch (error) {
       console.error("Download error:", error);
       res.status(500).json({
@@ -497,10 +1031,18 @@ class ProjectController {
       const userId = req.user.id;
       const { page = 1, limit = 10, deviceId } = req.query;
 
+      // Validate deviceId if provided
+      if (deviceId && isNaN(parseInt(deviceId))) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid device ID provided",
+        });
+      }
+
       const result = await ProjectService.getAcquiredProjects(userId, {
         page: parseInt(page),
         limit: parseInt(limit),
-        deviceId: deviceId ? parseInt(deviceId) : null, // Allow filtering by device
+        deviceId: deviceId ? parseInt(deviceId) : null,
       });
 
       res.json({
@@ -509,6 +1051,8 @@ class ProjectController {
         totalAcquiredProjects: result.totalProjectsAcquired,
         currentPage: result.currentPage,
         totalPages: result.totalPages,
+        filteredByDevice: !!deviceId,
+        deviceId: deviceId ? parseInt(deviceId) : null,
       });
     } catch (error) {
       console.error("Get Acquired Projects Error:", error);
@@ -522,7 +1066,7 @@ class ProjectController {
   async removeAcquiredProject(req, res) {
     try {
       const { projectId } = req.params;
-      const { deviceId } = req.body; // Get deviceId from the request
+      const { deviceId } = req.body;
 
       if (!req.user || !req.user.id) {
         return res.status(401).json({
@@ -562,7 +1106,6 @@ class ProjectController {
   async getUserDevices(req, res) {
     try {
       const userId = req.user.id;
-
       const devices = await ProjectService.getUserDevices(userId);
 
       res.json({
@@ -577,8 +1120,6 @@ class ProjectController {
       });
     }
   }
-
-
 }
 
 module.exports = new ProjectController();

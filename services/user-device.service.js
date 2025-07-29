@@ -1,4 +1,5 @@
 // Import models with associations
+const e = require('express');
 const { User, Device } = require('../model/associations.model');
 const { Op } = require('sequelize');
 
@@ -123,7 +124,7 @@ class DeviceService {
   }
 
   // User claims a device by serial number
-  async claimDeviceByUser(serialNumber, userId) {
+  async claimDeviceByUser(serialNumber, userId,nickName) {
     try {
       // Find device by serial number
       const device = await Device.findOne({
@@ -157,6 +158,13 @@ class DeviceService {
       
       // Assign device to user
       device.userId = userId;
+      if (!nickName) {
+        nickName = device.deviceName; // Use device name as default nickname if not provided
+      }else { 
+         device.nickName = nickName
+
+      }
+      
       device.lastUpdated = new Date();
       await device.save();
       
@@ -218,7 +226,7 @@ class DeviceService {
       throw new Error(`Error fetching devices: ${error.message}`);
     }
   }
-
+  
   async getUserDevices(userId) {
     try {
       const devices = await Device.findAll({
@@ -263,6 +271,71 @@ class DeviceService {
     await device.destroy();
     return true;
   }
+   async getIsDeviceModified(serialNumber,reset) {
+    try {
+     
+      const device = await Device.findOne({
+        where: { serialNumber }
+      });
+      
+      if (!device) {
+        throw new Error('Device not found with the provided serial number');
+      }
+
+      if (reset=="true") {
+        // Reset isModified status to false
+        device.isModified = false;
+        await device.save();
+      }
+      // Return device info with claim status
+      return {
+        id: device.id,
+        serialNumber: device.serialNumber,
+        isModified: device.isModified
+       
+      };
+    } catch (error) {
+      throw new Error(`Error fetching device-: ${error.message}`);
+    }
+  }
+
+  async updateDeviceNicknameBySerial(serialNumber, userId, newNickname) {
+  try {
+    // Find device by serial number
+    const device = await Device.findOne({
+      where: { serialNumber }
+    });
+    
+    if (!device) {
+      throw new Error('Device not found with the provided serial number');
+    }
+    
+    // Check if device belongs to the user
+    if (!device.userId || device.userId !== userId) {
+      throw new Error('You can only update nickname for devices you have claimed');
+    }
+    
+    // Validate nickname
+    if (!newNickname || newNickname.trim().length === 0) {
+      throw new Error('Nickname cannot be empty');
+    }
+    
+    if (newNickname.length > 50) {
+      throw new Error('Nickname cannot exceed 50 characters');
+    }
+    
+    // Update the nickname
+    device.nickName = newNickname.trim();
+    device.lastUpdated = new Date();
+    
+    await device.save();
+    
+    return device;
+  } catch (error) {
+    throw new Error(`Failed to update device nickname: ${error.message}`);
+  }
+}
+
 }
 
 module.exports = new DeviceService();

@@ -1,7 +1,7 @@
-const { DataTypes } = require('sequelize'); 
+const { DataTypes } = require('sequelize');
 const sequelize = require('../config/sequelize');
 
-const ProjectFile = sequelize.define('ProjectFile', {
+const ProjectImage = sequelize.define('ProjectImage', {
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
@@ -26,39 +26,34 @@ const ProjectFile = sequelize.define('ProjectFile', {
     allowNull: false,
     field: 'original_name'
   },
-  fileType: {
+  filePath: {
     type: DataTypes.STRING,
     allowNull: false,
-    field: 'file_type'
+    field: 'file_path'
   },
   fileSize: {
     type: DataTypes.INTEGER,
     allowNull: false,
     field: 'file_size'
   },
-  filePath: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    field: 'file_path'
-  },
   mimetype: {
     type: DataTypes.STRING,
     allowNull: false,
     field: 'mimetype'
   },
-  isZipExtracted: {
+  isMainImage: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
-    field: 'is_zip_extracted'
+    field: 'is_main_image'
   },
-  originalZipName: {
-    type: DataTypes.STRING,
+  // Add soft delete column
+  deletedAt: {
+    type: DataTypes.DATE,
     allowNull: true,
-    field: 'original_zip_name'
-  },
- 
+    field: 'deleted_at'
+  }
 }, {
-  tableName: 'project_files',
+  tableName: 'project_images',
   timestamps: true,
   paranoid: true,
   underscored: true,
@@ -67,4 +62,4 @@ const ProjectFile = sequelize.define('ProjectFile', {
   deletedAt: 'deleted_at'
 });
 
-module.exports = ProjectFile
+module.exports = ProjectImage;

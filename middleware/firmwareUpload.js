@@ -1,110 +1,107 @@
-// middleware/firmwareUpload.js
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const AdmZip = require("adm-zip"); // Make sure to install this package
 
-const firmwareStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const version = req.body.version || "unknown";
-    // Create a folder for each version
-    const uploadPath = path.join(__dirname, `../uploads/firmware/${version}`);
-    fs.mkdirSync(uploadPath, { recursive: true });
-    console.log(`Firmware folder created: ${uploadPath}`);
-    cb(null, uploadPath);
+// Ensure the upload directory exists
+const uploadDir = path.join(__dirname, "../uploads/firmware");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// Configure multer storage
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    console.log("Multer destination called for file:", file.originalname);
+    console.log("Upload directory:", uploadDir);
+    
+    // Always use the main firmware upload directory
+    // Don't create version-specific folders yet - we'll handle that in the controller
+    cb(null, uploadDir);
   },
-  filename: (req, file, cb) => {
-    // Keep original filename for firmware files
-    console.log(`Firmware uploaded with name: ${file.originalname}`);
-    cb(null, file.originalname);
-  },
+  filename: function (req, file, cb) {
+    console.log("Multer filename called for file:", file.originalname);
+    
+    // Generate a unique filename with timestamp to avoid conflicts
+    const timestamp = Date.now();
+    const uniqueName = `${timestamp}-${file.originalname}`;
+    
+    console.log("Generated filename:", uniqueName);
+    cb(null, uniqueName);
+  }
 });
 
+// File filter to allow only specific types
 const fileFilter = (req, file, cb) => {
-  // Allow firmware related file types
-  const allowedExtensions = [
-    '.bin', '.hex', '.fw', '.zip', '.img',
-    '.txt', '.pdf', '.md', '.json', '.cfg'
+  console.log("File filter called for:", file.originalname, "mimetype:", file.mimetype);
+  
+  // Allow common firmware and documentation file types
+  const allowedMimes = [
+    'application/zip',
+    'application/x-zip-compressed',
+    'application/octet-stream', // For .bin, .hex files
+    'application/pdf',
+    'text/plain'
   ];
-
+  
+  const allowedExtensions = ['.zip', '.bin', '.hex', '.pdf', '.txt'];
   const fileExtension = path.extname(file.originalname).toLowerCase();
-
-  if (allowedExtensions.includes(fileExtension)) {
+  
+  if (allowedMimes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
+    console.log("File accepted:", file.originalname);
     cb(null, true);
   } else {
-    cb(new Error("Invalid firmware file type"), false);
+    console.log("File rejected:", file.originalname, "Extension:", fileExtension);
+    cb(new Error(`File type not allowed. Allowed types: ${allowedExtensions.join(', ')}`), false);
   }
 };
 
-// ZIP file processing middleware for firmware
-const processFirmwareZip = (req, res, next) => {
-  // Skip if no files uploaded
-  if (!req.files) {
-    return next();
-  }
-  
-  // Get all files from all fields
-  let allFiles = [];
-  Object.keys(req.files).forEach(field => {
-    allFiles = [...allFiles, ...req.files[field]];
-  });
-  
-  // Process any zip files
-  const zipProcessingPromises = allFiles
-    .filter(file => path.extname(file.originalname).toLowerCase() === '.zip')
-    .map(async (file) => {
-      try {
-        console.log(`Processing firmware ZIP file: ${file.originalname}`);
-        
-        // Create folder with zip name (without extension)
-        const zipNameWithoutExt = path.basename(file.originalname, '.zip');
-        const extractPath = path.join(path.dirname(file.path), zipNameWithoutExt);
-        
-        // Create extraction directory
-        fs.mkdirSync(extractPath, { recursive: true });
-        
-        // Extract the zip file
-        const zip = new AdmZip(file.path);
-        zip.extractAllTo(extractPath, true);
-        
-        console.log(`Firmware ZIP extracted to: ${extractPath}`);
-        
-        // Add extracted info to the file object
-        file.extractPath = extractPath;
-        file.isExtracted = true;
-      } catch (error) {
-        console.error(`Error extracting firmware ZIP file ${file.originalname}:`, error);
-      }
-    });
-  
-  // Wait for all zip processing to complete
-  Promise.all(zipProcessingPromises)
-    .then(() => next())
-    .catch(error => {
-      console.error("Error processing firmware ZIP files:", error);
-      next();
-    });
-};
-
-// Create the multer middleware
+// Configure multer
 const upload = multer({
-  storage: firmwareStorage,
+  storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB file size limit
-    files: 10, // Maximum 10 firmware files
-  },
+    fileSize: 100 * 1024 * 1024, // 100MB limit
+    files: 10 // Maximum 10 files
+  }
 });
 
-// Export middleware that handles multer upload and processes any zip files
+// Error handling middleware
+const handleMulterError = (error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'File too large. Maximum size is 100MB.'
+      });
+    }
+    if (error.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({
+        success: false,
+        message: 'Too many files. Maximum 10 files allowed.'
+      });
+    }
+    if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({
+        success: false,
+        message: 'Unexpected field name. Use "firmware" or "documentation".'
+      });
+    }
+  }
+  
+  if (error.message.includes('File type not allowed')) {
+    return res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+  
+  next(error);
+};
+
+// Export the configured upload middleware
 module.exports = {
-  uploadFields: (fields) => {
-    return [
-      upload.fields(fields),
-      processFirmwareZip
-    ];
-  },
-  uploadMany: upload.array.bind(upload),
-  uploadSingle: upload.single.bind(upload),
-  upload: upload
+  upload,
+  handleMulterError,
+  // For backwards compatibility with your existing route
+  uploadFields: (fields) => upload.fields(fields)
 };

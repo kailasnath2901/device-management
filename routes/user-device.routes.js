@@ -24,6 +24,7 @@ router.patch('/Updatedevice/:deviceId',
 router.post('/claim', authenticate, deviceController.claimDevice);
 router.delete('/remove-claim/:deviceId', authenticate, deviceController.removeClaimedDevice);
 router.get('/my-devices', authenticate, deviceController.getUserDevices);
+router.get('/is-modified', authenticate, deviceController.getIsModified);
 
 router.delete('/admin/devices/:deviceId', 
   authenticate, 

@@ -36,11 +36,44 @@ const User = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    // New columns
+    is_email_verified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    coupon_points: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+    },
+    mobile_no: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      validate: {
+        len: {
+          args: [10, 10],
+          
+          msg: "Mobile number must be exactly 10 digits",
+        },
+        isNumeric: {
+          msg: "Mobile number must contain only numbers",
+        },
+        notEmpty: function (value) {
+          if (value !== null && value !== undefined && value.trim() === "") {
+            throw new Error("Mobile number cannot be empty string");
+          }
+        },
+      },
+    },
+    user_category: {
+      type: DataTypes.ENUM("Standard", "Premium", "Elite"),
+      defaultValue: "Standard",
+    },
   },
   {
     tableName: "user",
     timestamps: true,
   }
 );
+
 
 module.exports = User;

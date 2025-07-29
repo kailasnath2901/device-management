@@ -1,16 +1,14 @@
+// controllers/user.controller.js - Updated with OTP endpoints
 const userService = require("../services/user.services");
 
+// Existing signup - now sends OTP
 exports.signup = async (req, res) => {
   try {
-    const user = await userService.signup(req.body);
+    const result = await userService.signup(req.body);
     res.status(201).json({
       success: true,
-      message: "User created successfully",
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-      },
+      message: result.message,
+      user: result.user,
     });
   } catch (error) {
     res.status(400).json({
@@ -20,11 +18,74 @@ exports.signup = async (req, res) => {
   }
 };
 
-exports.login = async (req, res) => {
+// New: Verify email with OTP
+exports.verifyEmail = async (req, res) => {
   try {
-    const result = await userService.login(req.body.email, req.body.password);
+    const { email, otp } = req.body;
+    
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and OTP are required",
+      });
+    }
+
+    const result = await userService.verifyEmail(email, otp);
     res.json({
       success: true,
+      message: result.message,
+      user: result.user,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// New: Resend verification OTP
+exports.resendVerificationOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const result = await userService.resendVerificationOTP(email);
+    res.json({
+      success: true,
+      message: result.message,
+      expiresIn: result.expiresIn,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Existing login (password-based)
+exports.login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
+      });
+    }
+
+    const result = await userService.login(email, password);
+    res.json({
+      success: true,
+      message: "Login successful",
       ...result,
     });
   } catch (error) {
@@ -35,6 +96,59 @@ exports.login = async (req, res) => {
   }
 };
 
+// New: Request OTP for login
+exports.requestLoginOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const result = await userService.requestLoginOTP(email);
+    res.json({
+      success: true,
+      message: result.message,
+      expiresIn: result.expiresIn,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// New: Login with OTP
+exports.loginWithOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and OTP are required",
+      });
+    }
+
+    const result = await userService.loginWithOTP(email, otp);
+    res.json({
+      success: true,
+      message: "Login successful",
+      ...result,
+    });
+  } catch (error) {
+    res.status(401).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Existing controllers remain the same...
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await userService.getAllUsers(req.user);
@@ -91,7 +205,6 @@ exports.createAdminBySuper = async (req, res) => {
     });
   }
 };
-
 
 exports.getAcquiredProjects = async (req, res) => {
   try {
