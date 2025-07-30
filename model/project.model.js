@@ -80,10 +80,9 @@ const Project = sequelize.define(
       },
     },
     versionType: {
-      type: DataTypes.ENUM("development", "release"),
+      type: DataTypes.ENUM("development", "release",),
       allowNull: false,
       field: "version_type",
-      defaultValue: "development",
     },
     // Existing fields
     youtubeLink: {

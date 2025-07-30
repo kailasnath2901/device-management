@@ -320,7 +320,6 @@ class ProjectController {
           });
         }
       }
-
       const projectData = {
         name: req.body.name,
         description: req.body.description,
@@ -330,8 +329,10 @@ class ProjectController {
         priceInInr: req.body.priceInInr || null,
         difficulty: req.body.difficulty || "easy",
         categoryId: req.body.categoryId,
-        testAndTroubleshootLink: req.body.testLink || req.body.troubleshootLink, // Handle both field names
-        versionType: req.body.versionType || "development",
+        testAndTroubleshootLink: req.body.testLink || req.body.troubleshootLink,
+        versionType: req.body.version_type
+          ? req.body.version_type
+          : req.body.versionType || "development",
         youtubeLink: req.body.youtubeLink,
         projectType: req.body.projectType || "free",
         maxAcquisitions: req.body.maxAcquisitions || 5,
