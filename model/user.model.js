@@ -51,7 +51,7 @@ const User = sequelize.define(
       validate: {
         len: {
           args: [10, 10],
-          
+
           msg: "Mobile number must be exactly 10 digits",
         },
         isNumeric: {
@@ -68,12 +68,45 @@ const User = sequelize.define(
       type: DataTypes.ENUM("Standard", "Premium", "Elite"),
       defaultValue: "Standard",
     },
+    deleted_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    deleted_by: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "User",
+        key: "id",
+      },
+    },
   },
   {
     tableName: "user",
     timestamps: true,
+    paranoid: false, // We're handling soft delete manually with is_active
+
+    // Add default scope to exclude deleted users
+    defaultScope: {
+      where: {
+        is_active: true,
+      },
+    },
+
+    // Add scopes for different scenarios
+    scopes: {
+      // Include deleted users
+      withDeleted: {
+        where: {},
+      },
+      // Only deleted users
+      deletedOnly: {
+        where: {
+          is_active: false,
+        },
+      },
+    },
   }
 );
-
 
 module.exports = User;

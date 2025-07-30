@@ -19,11 +19,12 @@ app.use(morgan("dev"));
 app.use(
   cors({
     origin: [
-      "http://64.227.138.175:8010", 
-      "http://192.168.10.124:8010", 
+      "http://64.227.138.175:8025", 
+      "http://192.168.10.124:8025", 
       "http://localhost:3000",
       "https://api.roboninjaz.com",
-      "https://roboninjaz.com"
+      "https://roboninjaz.com",
+       "https://dev.roboninjaz.com"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -58,7 +59,7 @@ app.get("/test", (req, res) => {
   res.status(200).send("<h1>Node.js project created with Sequelize - Ticket System Ready</h1>");
 });
 
-const port = process.env.PORT || 8010;
+const port = process.env.PORT || 8015;
 
 const startServer = async () => {
   try {

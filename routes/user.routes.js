@@ -1,4 +1,3 @@
-
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/user.controller');
@@ -9,13 +8,17 @@ const { checkInitialSetup, performInitialSetup } = require('../services/initial-
 router.post('/signup', userController.signup);
 router.post('/login', userController.login);
 
-// New OTP routes
+// OTP routes (public)
 router.post('/verify-email', userController.verifyEmail);
 router.post('/resend-verification-otp', userController.resendVerificationOTP);
 router.post('/request-login-otp', userController.requestLoginOTP);
 router.post('/login-with-otp', userController.loginWithOTP);
 
-// Initial setup route
+// NEW: Password reset routes (public - no authentication required)
+router.post('/forgot-password', userController.forgotPassword);
+router.post('/reset-password', userController.resetPassword);
+
+// Initial setup route (public)
 router.post('/initial-setup', async (req, res) => {
   try {
     const isSetupComplete = await checkInitialSetup();
@@ -46,7 +49,15 @@ router.post('/initial-setup', async (req, res) => {
   }
 });
 
-// Protected routes
+// Protected routes (require authentication)
+
+// NEW: Change password (requires auth token in header, no additional token needed)
+router.put('/change-password', 
+  authenticate, 
+  userController.changePassword
+);
+
+// User management routes
 router.get('/getAll', 
   authenticate, 
   authorizeRoles('admin', 'super_admin'), 
@@ -65,6 +76,14 @@ router.post('/create-admin',
   userController.createAdminBySuper
 );
 
+// NEW: Delete user route (admin can delete users, super_admin can delete admin and users)
+router.delete('/:userId', 
+  authenticate, 
+  authorizeRoles('admin', 'super_admin'), 
+  userController.deleteUser
+);
+
+// User projects route
 router.get('/get-acquired-projects', 
   authenticate, 
   userController.getAcquiredProjects
