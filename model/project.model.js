@@ -14,6 +14,15 @@ const Project = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
+    projectId: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
+      field: "project_id",
+      validate: {
+        notEmpty: true,
+      },
+    },
     name: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -80,7 +89,7 @@ const Project = sequelize.define(
       },
     },
     versionType: {
-      type: DataTypes.ENUM("development", "release",),
+      type: DataTypes.ENUM("development", "release"),
       allowNull: false,
       field: "version_type",
     },

@@ -320,10 +320,11 @@ class ProjectController {
           });
         }
       }
+
       const projectData = {
         name: req.body.name,
         description: req.body.description,
-        keywordsList: keywordsList, // Use keywordsList instead of keywords
+        keywordsList: keywordsList,
         whatItIs: req.body.whatItIs,
         howItWorks: req.body.howItWorks,
         priceInInr: req.body.priceInInr || null,
@@ -340,12 +341,14 @@ class ProjectController {
         version: 1,
         userId,
         dashboard: req.body.dashboard || null,
+        // Custom projectId - if provided, use it; otherwise, it will be auto-generated
+        projectId: req.body.projectId || undefined,
       };
 
       // Create project
       const project = await Project.create(projectData);
 
-      // Create project folder
+      // Create project folder using the primary key id (not custom projectId)
       const projectFolder = path.join(
         process.cwd(),
         "public",
@@ -393,6 +396,7 @@ class ProjectController {
             message: "Some files are missing original names",
           });
         }
+
         const filesPromises = req.files.files.map(async (file) => {
           const filePath = path.join(projectFolder, file.filename);
           // Move file to project folder
@@ -400,8 +404,9 @@ class ProjectController {
 
           return ProjectFile.create({
             projectId: project.id,
+            
             filename: file.filename,
-            originalName: file.originalname, // This is required and can't be null
+            originalName: file.originalname,
             fileType: path.extname(file.originalname),
             fileSize: file.size,
             filePath: filePath,
@@ -464,11 +469,11 @@ class ProjectController {
 
   async editProject(req, res) {
     try {
-      const { projectId } = req.params;
+      const { projectId } = req.params; // This is the primary key id
       const userId = req.user.id;
       const userRole = req.user.role;
 
-      // Find existing project
+      // Find existing project by primary key
       const existingProject = await Project.findByPk(projectId, {
         include: [
           {
@@ -518,10 +523,22 @@ class ProjectController {
 
       // Update fields if provided
       if (req.body.name) updateData.name = req.body.name;
+      if (req.body.projectId) updateData.projectId = req.body.projectId; // Allow updating custom projectId
       if (req.body.description !== undefined)
         updateData.description = req.body.description;
-      if (req.body.keywords !== undefined)
-        updateData.keywords = req.body.keywords;
+      if (req.body.keywords !== undefined) {
+        // Handle keywords update
+        let keywordsList = [];
+        if (typeof req.body.keywords === "string") {
+          keywordsList = req.body.keywords
+            .split(",")
+            .map((keyword) => keyword.trim())
+            .filter((keyword) => keyword.length > 0);
+        } else if (Array.isArray(req.body.keywords)) {
+          keywordsList = req.body.keywords;
+        }
+        updateData.keywordsList = keywordsList;
+      }
       if (req.body.whatItIs !== undefined)
         updateData.whatItIs = req.body.whatItIs;
       if (req.body.howItWorks !== undefined)
@@ -533,9 +550,9 @@ class ProjectController {
       if (req.body.categoryId !== undefined)
         updateData.categoryId = req.body.categoryId;
       if (req.body.testLink !== undefined)
-        updateData.testLink = req.body.testLink;
+        updateData.testAndTroubleshootLink = req.body.testLink;
       if (req.body.troubleshootLink !== undefined)
-        updateData.troubleshootLink = req.body.troubleshootLink;
+        updateData.testAndTroubleshootLink = req.body.troubleshootLink;
       if (req.body.versionType !== undefined)
         updateData.versionType = req.body.versionType;
       if (req.body.youtubeLink !== undefined)
@@ -544,6 +561,8 @@ class ProjectController {
         updateData.projectType = req.body.projectType;
       if (req.body.maxAcquisitions !== undefined)
         updateData.maxAcquisitions = req.body.maxAcquisitions;
+      if (req.body.dashboard !== undefined)
+        updateData.dashboard = req.body.dashboard;
 
       // Update project basic info
       await existingProject.update(updateData);
@@ -638,7 +657,8 @@ class ProjectController {
 
           return ProjectFile.create({
             projectId: existingProject.id,
-            filename: file.filename || file.originalname,
+            filename: file.filename,
+            originalName: file.originalname,
             fileType: path.extname(file.originalname),
             fileSize: file.size,
             filePath: filePath,
@@ -781,7 +801,7 @@ class ProjectController {
         keyword,
         componentId,
         projectName,
-        projectId,
+        projectId, // This now searches the custom projectId field
         categoryId,
         difficulty,
         projectType,
@@ -795,7 +815,7 @@ class ProjectController {
           keyword,
           componentId,
           projectName,
-          projectId,
+          projectId, // Custom projectId search
           categoryId,
           difficulty,
           projectType,

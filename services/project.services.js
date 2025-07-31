@@ -219,6 +219,7 @@ class ProjectService {
   async createProject(req, res) {
     try {
       const userId = req.user.id;
+      console.log(req.body);
 
       // Validate required fields
       if (!req.body.name) {
@@ -255,6 +256,21 @@ class ProjectService {
           success: false,
           message: "howItWorks field is required",
         });
+      }
+
+      if (req.body.projectId) {
+        // Check if custom projectId already exists
+        const existingProject = await Project.findOne({
+          where: { projectId: req.body.projectId },
+        });
+
+        if (existingProject) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Project ID already exists. Please choose a different one.",
+          });
+        }
       }
 
       // Parse and validate keywords - convert string to array
@@ -318,6 +334,7 @@ class ProjectService {
         lastUpdated: new Date(),
         version: 1,
         userId,
+        projectId: req.body.projectId || null,
       };
 
       // Create project
@@ -494,6 +511,7 @@ class ProjectService {
       });
     }
   }
+
   async updateProject(projectId, updateData, files = {}) {
     const transaction = await sequelize.transaction();
 
@@ -616,10 +634,14 @@ class ProjectService {
     const { page = 1, limit = 10 } = options;
     const offset = (page - 1) * limit;
 
-    const whereCondition = {};
+    const whereCondition = {
+      versionType: "release", // Only show release version projects
+    };
 
     if (!["admin", "super_admin"].includes(userRole)) {
-      whereCondition.userId = userId;
+      // Regular users can see all release projects, not just their own
+      // If you want users to see only their own projects, uncomment the line below
+      // whereCondition.userId = userId;
     }
 
     const { count, rows } = await Project.findAndCountAll({
@@ -678,14 +700,16 @@ class ProjectService {
       keyword,
       componentId,
       projectName,
-      projectId,
+      projectId, // This now refers to the custom projectId field
       categoryId,
       difficulty,
+      projectType,
     } = searchParams;
     const offset = (page - 1) * limit;
 
     let whereCondition = {
       deleted_at: null, // Explicitly filter out soft-deleted projects
+      versionType: "release", // Only show release version projects
     };
 
     let includeConditions = [
@@ -718,9 +742,11 @@ class ProjectService {
       },
     ];
 
-    // Search by project ID
+    // Search by custom projectId (not the primary key id)
     if (projectId) {
-      whereCondition.id = projectId;
+      whereCondition.projectId = {
+        [Op.like]: `%${projectId}%`,
+      };
     }
 
     // Search by project name
@@ -740,12 +766,18 @@ class ProjectService {
       whereCondition.difficulty = difficulty;
     }
 
+    // Search by project type
+    if (projectType) {
+      whereCondition.project_type = projectType;
+    }
+
     // Search by keywords - Final working version
     if (keyword) {
       whereCondition[Op.or] = [
         // Use model attribute names (not table column names)
         { name: { [Op.like]: `%${keyword}%` } },
         { description: { [Op.like]: `%${keyword}%` } },
+        { projectId: { [Op.like]: `%${keyword}%` } }, // Also search in custom projectId
         // For JSON search in MySQL
         sequelize.literal(`JSON_CONTAINS(keywords_list, '"${keyword}"')`),
         // Use field mappings for underscored columns
@@ -760,7 +792,10 @@ class ProjectService {
 
     // Search by component
     if (componentId) {
-      includeConditions[3].where = { id: componentId };
+      includeConditions[3].where = {
+        ...includeConditions[3].where,
+        id: componentId,
+      };
       includeConditions[3].required = true;
     }
 
@@ -796,6 +831,16 @@ class ProjectService {
       });
       throw error;
     }
+  }
+
+  // Helper method to generate image URLs (implement based on your needs)
+  generateImageUrls(images) {
+    return images.map((image) => ({
+      ...image,
+      publicUrl:
+        image.publicUrl ||
+        `/projects/${image.projectId}/images/${image.filename}`,
+    }));
   }
 
   async deleteProject(projectId, userId, userRole) {
