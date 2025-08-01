@@ -135,7 +135,7 @@ async searchComponents(searchTerm, options = {}) {
           [Op.like]: `%${searchTerm}%` // Changed from Op.iLike to Op.like for MySQL
         }
       },
-      attributes: ['id', 'name', 'description', 'specifications'],
+      attributes: ['id', 'name', 'description'],
       limit: parseInt(limit, 10),
       offset: parseInt(offset, 10),
       order: [['name', 'ASC']]
