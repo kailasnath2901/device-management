@@ -323,6 +323,19 @@ async searchComponents(req, res) {
         });
       }
 
+         if (req.body.projectId) {
+      const existingProject = await Project.findOne({
+        where: { projectId: req.body.projectId },
+      });
+
+      if (existingProject) {
+        return res.status(400).json({
+          success: false,
+          message: `Project ID '${req.body.projectId}' already exists. Please choose a different one.`,
+        });
+      }
+    }
+
       if (!req.body.howItWorks) {
         return res.status(400).json({
           success: false,
