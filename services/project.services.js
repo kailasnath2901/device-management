@@ -95,7 +95,6 @@ class ProjectService {
   }
 
 
-  // Search categories by name
 async searchCategories(searchTerm, options = {}) {
   const { page = 1, limit = 10 } = options;
   const offset = (page - 1) * limit;
@@ -104,7 +103,7 @@ async searchCategories(searchTerm, options = {}) {
     const { count, rows } = await Category.findAndCountAll({
       where: {
         name: {
-          [Op.iLike]: `%${searchTerm}%` // Use iLike for case-insensitive search
+          [Op.like]: `%${searchTerm}%` // Changed from Op.iLike to Op.like for MySQL
         }
       },
       attributes: ['id', 'name', 'description'],
@@ -133,7 +132,7 @@ async searchComponents(searchTerm, options = {}) {
     const { count, rows } = await Component.findAndCountAll({
       where: {
         name: {
-          [Op.iLike]: `%${searchTerm}%` // Use iLike for case-insensitive search
+          [Op.like]: `%${searchTerm}%` // Changed from Op.iLike to Op.like for MySQL
         }
       },
       attributes: ['id', 'name', 'description', 'specifications'],
@@ -152,7 +151,6 @@ async searchComponents(searchTerm, options = {}) {
     throw new Error(`Error searching components: ${error.message}`);
   }
 }
-
   // Component CRUD operations
   async createComponent(componentData) {
     try {
