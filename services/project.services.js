@@ -94,63 +94,62 @@ class ProjectService {
     }
   }
 
+  async searchCategories(searchTerm, options = {}) {
+    const { page = 1, limit = 10 } = options;
+    const offset = (page - 1) * limit;
 
-async searchCategories(searchTerm, options = {}) {
-  const { page = 1, limit = 10 } = options;
-  const offset = (page - 1) * limit;
+    try {
+      const { count, rows } = await Category.findAndCountAll({
+        where: {
+          name: {
+            [Op.like]: `%${searchTerm}%`, // Changed from Op.iLike to Op.like for MySQL
+          },
+        },
+        attributes: ["id", "name", "description"],
+        limit: parseInt(limit, 10),
+        offset: parseInt(offset, 10),
+        order: [["name", "ASC"]],
+      });
 
-  try {
-    const { count, rows } = await Category.findAndCountAll({
-      where: {
-        name: {
-          [Op.like]: `%${searchTerm}%` // Changed from Op.iLike to Op.like for MySQL
-        }
-      },
-      attributes: ['id', 'name', 'description'],
-      limit: parseInt(limit, 10),
-      offset: parseInt(offset, 10),
-      order: [['name', 'ASC']]
-    });
-
-    return {
-      categories: rows,
-      totalCategories: count,
-      totalPages: Math.ceil(count / limit),
-      currentPage: parseInt(page, 10),
-    };
-  } catch (error) {
-    throw new Error(`Error searching categories: ${error.message}`);
+      return {
+        categories: rows,
+        totalCategories: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: parseInt(page, 10),
+      };
+    } catch (error) {
+      throw new Error(`Error searching categories: ${error.message}`);
+    }
   }
-}
 
-// Search components by name
-async searchComponents(searchTerm, options = {}) {
-  const { page = 1, limit = 10 } = options;
-  const offset = (page - 1) * limit;
+  // Search components by name
+  async searchComponents(searchTerm, options = {}) {
+    const { page = 1, limit = 10 } = options;
+    const offset = (page - 1) * limit;
 
-  try {
-    const { count, rows } = await Component.findAndCountAll({
-      where: {
-        name: {
-          [Op.like]: `%${searchTerm}%` // Changed from Op.iLike to Op.like for MySQL
-        }
-      },
-      attributes: ['id', 'name', 'description'],
-      limit: parseInt(limit, 10),
-      offset: parseInt(offset, 10),
-      order: [['name', 'ASC']]
-    });
+    try {
+      const { count, rows } = await Component.findAndCountAll({
+        where: {
+          name: {
+            [Op.like]: `%${searchTerm}%`, // Changed from Op.iLike to Op.like for MySQL
+          },
+        },
+        attributes: ["id", "name", "description"],
+        limit: parseInt(limit, 10),
+        offset: parseInt(offset, 10),
+        order: [["name", "ASC"]],
+      });
 
-    return {
-      components: rows,
-      totalComponents: count,
-      totalPages: Math.ceil(count / limit),
-      currentPage: parseInt(page, 10),
-    };
-  } catch (error) {
-    throw new Error(`Error searching components: ${error.message}`);
+      return {
+        components: rows,
+        totalComponents: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: parseInt(page, 10),
+      };
+    } catch (error) {
+      throw new Error(`Error searching components: ${error.message}`);
+    }
   }
-}
   // Component CRUD operations
   async createComponent(componentData) {
     try {
@@ -1069,7 +1068,7 @@ async searchComponents(searchTerm, options = {}) {
             {
               model: ProjectImage,
               as: "images",
-              attributes: ["id", "filename", "publicUrl"], // Only essential image fields
+              attributes: ["id", "filename"], // Remove publicUrl from here
               required: false,
             },
           ],
@@ -1087,12 +1086,15 @@ async searchComponents(searchTerm, options = {}) {
       col: "id",
     });
 
-    // Add public URLs for images (simplified)
+    // Add public URLs for images (generate them dynamically)
     const projectsWithImageUrls = rows.map((acquisition) => {
       const acquisitionData = acquisition.toJSON();
       if (acquisitionData.project && acquisitionData.project.images) {
-        acquisitionData.project.images = this.generateImageUrls(
-          acquisitionData.project.images
+        acquisitionData.project.images = acquisitionData.project.images.map(
+          (image) => ({
+            ...image,
+            publicUrl: `/projects/${acquisitionData.project.id}/images/${image.filename}`,
+          })
         );
       }
       return acquisitionData;
