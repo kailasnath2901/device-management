@@ -223,6 +223,70 @@ class ProjectController {
     }
   }
 
+
+
+  // Search categories by name
+async searchCategories(req, res) {
+  try {
+    const { search, page = 1, limit = 10 } = req.query;
+
+    if (!search || search.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: "Search term is required",
+      });
+    }
+
+    const result = await ProjectService.searchCategories(search.trim(), { 
+      page: parseInt(page), 
+      limit: parseInt(limit) 
+    });
+
+    return res.status(200).json({
+      success: true,
+      searchTerm: search.trim(),
+      ...result,
+    });
+  } catch (error) {
+    console.error("Error searching categories:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+// Search components by name
+async searchComponents(req, res) {
+  try {
+    const { search, page = 1, limit = 10 } = req.query;
+
+    if (!search || search.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: "Search term is required",
+      });
+    }
+
+    const result = await ProjectService.searchComponents(search.trim(), { 
+      page: parseInt(page), 
+      limit: parseInt(limit) 
+    });
+
+    return res.status(200).json({
+      success: true,
+      searchTerm: search.trim(),
+      ...result,
+    });
+  } catch (error) {
+    console.error("Error searching components:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
   // Project operations
   // Project operations
   async createProject(req, res) {

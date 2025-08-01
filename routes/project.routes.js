@@ -38,6 +38,9 @@ router.get("/user/acquired-projects", authenticate, projectController.getAcquire
 router.get("/user/devices", authenticate, projectController.getUserDevices);
 
 
+router.get('/categories/search', projectController.searchCategories);
+router.get('/components/search', projectController.searchComponents);
+
 
 
 module.exports = router;

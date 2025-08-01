@@ -5,8 +5,8 @@ const morgan = require("morgan");
 const env = require("dotenv");
 const sequelize = require("./config/sequelize");
 const cors = require("cors");
-const path = require('path');
-const fs = require('fs');
+const path = require("path");
+const fs = require("fs");
 const { performInitialSetup } = require("./services/initial-setup.service");
 
 env.config();
@@ -19,27 +19,28 @@ app.use(morgan("dev"));
 app.use(
   cors({
     origin: [
-      "http://64.227.138.175:8025", 
-      "http://192.168.10.124:8025", 
+      "http://64.227.138.175:8025",
+      "http://192.168.10.124:8025",
       "http://localhost:3000",
       "https://api.roboninjaz.com",
       "https://roboninjaz.com",
-       "https://dev.roboninjaz.com"
+      "https://dev.roboninjaz.com",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true
+    credentials: true,
   })
 );
 
 // Static file serving
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/firmware', express.static(path.join(__dirname, 'uploads/firmware')));
+app.use(express.static(path.join(__dirname, "public")));
+app.use("/firmware", express.static(path.join(__dirname, "uploads/firmware")));
+app.use("/projects", express.static(path.join(__dirname, "public/projects")));
 
 // Routes
 app.use("/api/user", require("./routes/user.routes"));
 app.use("/api/projects", require("./routes/project.routes"));
-app.use("/api/user-devices", require("./routes/user-device.routes")); 
+app.use("/api/user-devices", require("./routes/user-device.routes"));
 app.use("/api/firmware", require("./routes/fileFirmware.routes"));
 app.use("/api/tickets", require("./routes/ticket.routes"));
 app.use("/api/queries", require("./routes/query.routes"));
@@ -49,14 +50,18 @@ app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({
     success: false,
-    message: 'Internal Server Error',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    message: "Internal Server Error",
+    error: process.env.NODE_ENV === "development" ? err.message : undefined,
   });
 });
 
 // Test route
 app.get("/test", (req, res) => {
-  res.status(200).send("<h1>Node.js project created with Sequelize - Ticket System Ready</h1>");
+  res
+    .status(200)
+    .send(
+      "<h1>Node.js project created with Sequelize - Ticket System Ready</h1>"
+    );
 });
 
 const port = process.env.PORT || 8015;
@@ -70,8 +75,8 @@ const startServer = async () => {
     console.log("Model associations defined successfully.");
 
     // Sync models with database
-    await sequelize.sync({ 
-      alter: false // Set to true only for development if you want to auto-alter tables
+    await sequelize.sync({
+      alter: false, // Set to true only for development if you want to auto-alter tables
     });
     console.log("Database synchronized successfully.");
 
@@ -79,7 +84,7 @@ const startServer = async () => {
     // await performInitialSetup({ username: 'Admin', email: 'admin@roboninjaz.com', password: 'admin123' });
 
     // Start server
-    app.listen(port, '0.0.0.0', () => {
+    app.listen(port, "0.0.0.0", () => {
       console.log(`Server is running on port ${port}`);
       console.log(`Ticket system is ready!`);
     });
@@ -92,14 +97,14 @@ const startServer = async () => {
 startServer();
 
 // Handle graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully...');
+process.on("SIGTERM", async () => {
+  console.log("SIGTERM received, shutting down gracefully...");
   await sequelize.close();
   process.exit(0);
 });
 
-process.on('SIGINT', async () => {
-  console.log('SIGINT received, shutting down gracefully...');
+process.on("SIGINT", async () => {
+  console.log("SIGINT received, shutting down gracefully...");
   await sequelize.close();
   process.exit(0);
 });

@@ -6,7 +6,7 @@ const Component = require("../model/component.model");
 const ProjectComponent = require("../model/projectComponent.model");
 const UserProjectAcquisition = require("../model/user-project-acquisition.model");
 const Device = require("../model/user-device.model");
-const { Sequelize, Op } = require("sequelize");
+const { Sequelize, Op, where } = require("sequelize");
 const sequelize = require("../config/sequelize");
 const path = require("path");
 const fs = require("fs");
@@ -93,6 +93,65 @@ class ProjectService {
       throw new Error(`Error deleting category: ${error.message}`);
     }
   }
+
+
+  // Search categories by name
+async searchCategories(searchTerm, options = {}) {
+  const { page = 1, limit = 10 } = options;
+  const offset = (page - 1) * limit;
+
+  try {
+    const { count, rows } = await Category.findAndCountAll({
+      where: {
+        name: {
+          [Op.iLike]: `%${searchTerm}%` // Use iLike for case-insensitive search
+        }
+      },
+      attributes: ['id', 'name', 'description'],
+      limit: parseInt(limit, 10),
+      offset: parseInt(offset, 10),
+      order: [['name', 'ASC']]
+    });
+
+    return {
+      categories: rows,
+      totalCategories: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: parseInt(page, 10),
+    };
+  } catch (error) {
+    throw new Error(`Error searching categories: ${error.message}`);
+  }
+}
+
+// Search components by name
+async searchComponents(searchTerm, options = {}) {
+  const { page = 1, limit = 10 } = options;
+  const offset = (page - 1) * limit;
+
+  try {
+    const { count, rows } = await Component.findAndCountAll({
+      where: {
+        name: {
+          [Op.iLike]: `%${searchTerm}%` // Use iLike for case-insensitive search
+        }
+      },
+      attributes: ['id', 'name', 'description', 'specifications'],
+      limit: parseInt(limit, 10),
+      offset: parseInt(offset, 10),
+      order: [['name', 'ASC']]
+    });
+
+    return {
+      components: rows,
+      totalComponents: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: parseInt(page, 10),
+    };
+  } catch (error) {
+    throw new Error(`Error searching components: ${error.message}`);
+  }
+}
 
   // Component CRUD operations
   async createComponent(componentData) {
@@ -634,14 +693,14 @@ class ProjectService {
     const { page = 1, limit = 10 } = options;
     const offset = (page - 1) * limit;
 
-    const whereCondition = {
-      versionType: "release", // Only show release version projects
-    };
+    const whereCondition = {};
 
-    if (!["admin", "super_admin"].includes(userRole)) {
+    if (!["admin", "super_admin", "tester"].includes(userRole)) {
       // Regular users can see all release projects, not just their own
       // If you want users to see only their own projects, uncomment the line below
       // whereCondition.userId = userId;
+    } else {
+      whereCondition.versionType = "release";
     }
 
     const { count, rows } = await Project.findAndCountAll({
@@ -996,61 +1055,31 @@ class ProjectService {
 
     const { count, rows } = await UserProjectAcquisition.findAndCountAll({
       where: whereClause,
+      attributes: ["id", "createdAt"], // Only get acquisition ID and creation date
       include: [
         {
           model: Project,
           as: "project",
-          attributes: [
-            "id",
-            "name",
-            "description",
-            "projectType",
-            "youtubeLink",
-            "version",
-            "whatItIs",
-            "howItWorks",
-            "difficulty",
-            "versionType",
-          ],
+          attributes: ["id", "name", "description"], // Only project id, name, and description
           include: [
             {
               model: ProjectFile,
               as: "files",
-              attributes: [
-                "id",
-                "filename",
-                "originalName",
-                "fileType",
-                "fileSize",
-                "filePath",
-                "mimetype",
-                "isZipExtracted",
-                "originalZipName",
-              ],
+              attributes: ["id", "filename"], // Only file id and filename
               required: false,
             },
             {
               model: ProjectImage,
               as: "images",
+              attributes: ["id", "filename", "publicUrl"], // Only essential image fields
               required: false,
-            },
-            {
-              model: Category,
-              as: "category",
-              attributes: ["id", "name"],
             },
           ],
         },
         {
           model: Device,
           as: "device",
-          attributes: [
-            "id",
-            "deviceName",
-            "deviceType",
-            "firmwareVersion",
-            "serialNumber",
-          ],
+          attributes: ["id", "deviceName", "serialNumber"], // Only device id, name, and serial number
         },
       ],
       limit: limit,
@@ -1060,7 +1089,7 @@ class ProjectService {
       col: "id",
     });
 
-    // Add public URLs for images
+    // Add public URLs for images (simplified)
     const projectsWithImageUrls = rows.map((acquisition) => {
       const acquisitionData = acquisition.toJSON();
       if (acquisitionData.project && acquisitionData.project.images) {
@@ -1078,7 +1107,6 @@ class ProjectService {
       totalPages: Math.ceil(count / limit),
     };
   }
-
   async removeAcquiredProject(userId, projectId, deviceId) {
     const acquisition = await UserProjectAcquisition.findOne({
       where: {

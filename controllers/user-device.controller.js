@@ -7,7 +7,7 @@ class DeviceController {
       const deviceData = req.body;
 
       // Check if the user is an admin
-      if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      if (req.user.role !== "admin" && req.user.role !== "super_") {
         return res.status(403).json({
           success: false,
           message: "Only admins can create devices",
@@ -31,7 +31,7 @@ class DeviceController {
   async claimDevice(req, res) {
     try {
       const { serialNumber, nickName } = req.body;
-    
+
       // const { serialNumber } = req.body;
       const userId = req.user.id;
 
@@ -272,14 +272,15 @@ class DeviceController {
       });
     }
   }
-//!-----Check the user added or removed any projects--------------
+  //!-----Check the user added or removed any projects--------------
   async getIsModified(req, res) {
     try {
       const { serialNumber } = req.body;
       const { reset } = req.body;
-      
+
       const isModified = await DeviceService.getIsDeviceModified(
-        serialNumber,reset
+        serialNumber,
+        reset
       );
 
       if (!serialNumber) {
@@ -298,7 +299,7 @@ class DeviceController {
 
       res.json({
         success: true,
-        ...isModified
+        ...isModified,
       });
     } catch (error) {
       res.status(400).json({

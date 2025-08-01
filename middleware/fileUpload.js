@@ -41,7 +41,7 @@ const fileFilter = (req, file, cb) => {
     '.py', '.txt', '.pdf', '.zip', 
     '.jpg', '.jpeg', '.png', '.gif', // Make sure to include all image types
     '.doc', '.docx', '.csv', 
-    '.xls', '.xlsx' ,'.html'
+    '.xls', '.xlsx' ,'.html','.json'
   ];
 
   const fileExtension = path.extname(file.originalname).toLowerCase();
