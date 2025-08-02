@@ -7,7 +7,7 @@ class DeviceController {
       const deviceData = req.body;
 
       // Check if the user is an admin
-      if (req.user.role !== "admin" && req.user.role !== "super_") {
+      if (req.user.role !== "admin" && req.user.role !== "super_admin") {
         return res.status(403).json({
           success: false,
           message: "Only admins can create devices",
