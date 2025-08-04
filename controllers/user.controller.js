@@ -22,7 +22,7 @@ exports.signup = async (req, res) => {
 exports.verifyEmail = async (req, res) => {
   try {
     const { email, otp } = req.body;
-    
+
     if (!email || !otp) {
       return res.status(400).json({
         success: false,
@@ -48,7 +48,7 @@ exports.verifyEmail = async (req, res) => {
 exports.resendVerificationOTP = async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     if (!email) {
       return res.status(400).json({
         success: false,
@@ -74,7 +74,7 @@ exports.resendVerificationOTP = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     if (!email || !password) {
       return res.status(400).json({
         success: false,
@@ -100,7 +100,7 @@ exports.login = async (req, res) => {
 exports.requestLoginOTP = async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     if (!email) {
       return res.status(400).json({
         success: false,
@@ -126,7 +126,7 @@ exports.requestLoginOTP = async (req, res) => {
 exports.loginWithOTP = async (req, res) => {
   try {
     const { email, otp } = req.body;
-    
+
     if (!email || !otp) {
       return res.status(400).json({
         success: false,
@@ -148,11 +148,10 @@ exports.loginWithOTP = async (req, res) => {
   }
 };
 
-
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     if (!email) {
       return res.status(400).json({
         success: false,
@@ -178,7 +177,7 @@ exports.forgotPassword = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
-    
+
     if (!email || !otp || !newPassword) {
       return res.status(400).json({
         success: false,
@@ -193,7 +192,11 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    const result = await userService.resetPasswordWithOTP(email, otp, newPassword);
+    const result = await userService.resetPasswordWithOTP(
+      email,
+      otp,
+      newPassword
+    );
     res.json({
       success: true,
       message: result.message,
@@ -211,7 +214,7 @@ exports.changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     const userId = req.user.id; // From auth middleware
-    
+
     if (!currentPassword || !newPassword) {
       return res.status(400).json({
         success: false,
@@ -233,7 +236,11 @@ exports.changePassword = async (req, res) => {
       });
     }
 
-    const result = await userService.changePassword(userId, currentPassword, newPassword);
+    const result = await userService.changePassword(
+      userId,
+      currentPassword,
+      newPassword
+    );
     res.json({
       success: true,
       message: result.message,
@@ -251,7 +258,7 @@ exports.deleteUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const requestingUser = req.user;
-    
+
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -274,19 +281,53 @@ exports.deleteUser = async (req, res) => {
 };
 
 
-
 // Existing controllers remain the same...
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await userService.getAllUsers(req.user);
+    // Extract pagination parameters from query string
+    const { page, limit } = req.query;
+
+    // Validate pagination parameters
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+
+    // Validate page and limit values
+    if (pageNum < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Page number must be greater than 0",
+      });
+    }
+
+    if (limitNum < 1 || limitNum > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Limit must be between 1 and 100",
+      });
+    }
+
+    const result = await userService.getAllUsers(req.user, {
+      page: pageNum,
+      limit: limitNum,
+    });
+
     res.json({
       success: true,
-      users,
+      data: result,
     });
   } catch (error) {
+    console.error("Error in getAllUsers:", error);
+
+    if (error.message === "Unauthorized access") {
+      return res.status(403).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Internal server error",
     });
   }
 };
@@ -336,13 +377,10 @@ exports.createAdminBySuper = async (req, res) => {
 exports.getAcquiredProjects = async (req, res) => {
   try {
     const { page = 1, limit = 5 } = req.query;
-    const result = await userService.getAcquiredProjects(
-      req.user.id, 
-      { 
-        page: parseInt(page), 
-        limit: parseInt(limit) 
-      }
-    );
+    const result = await userService.getAcquiredProjects(req.user.id, {
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
     res.json(result);
   } catch (error) {
     res.status(500).json({

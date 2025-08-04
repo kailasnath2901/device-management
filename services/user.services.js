@@ -8,9 +8,11 @@ const UserProjectAcquisition = require("../model/user-project-acquisition.model"
 const ProjectFile = require("../model/project-files.model");
 const OTPService = require("./otp.service");
 const EmailService = require("./email.services");
+const Device = require("../model/user-device.model");
+const Ticket = require("../model/ticket.model");
+const OTP = require("../model/otp.model");
 
 class UserService {
-  // Modified signup - creates user but doesn't verify email yet
   async signup(userData) {
     const { username, email, password, mobile_no } = userData;
 
@@ -207,8 +209,10 @@ class UserService {
     }
   }
 
-  // Existing methods remain the same...
-  async getAllUsers(requestingUser) {
+  async getAllUsers(requestingUser, options = {}) {
+    const { page = 1, limit = 10 } = options;
+    const offset = (page - 1) * limit;
+
     const queryOptions = {
       attributes: [
         "id",
@@ -221,17 +225,42 @@ class UserService {
         "user_category",
         "coupon_points",
       ],
+      limit: parseInt(limit, 10),
+      offset: parseInt(offset, 10),
+      order: [["createdAt", "DESC"]], // Order by creation date, newest first
+      distinct: true, // Ensure accurate count
     };
 
     if (requestingUser.role === "super_admin") {
-      return User.findAll(queryOptions);
+      // Super admin can see all users
+      const { count, rows } = await User.findAndCountAll(queryOptions);
+
+      return {
+        users: rows,
+        totalUsers: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: parseInt(page, 10),
+        hasNextPage: page < Math.ceil(count / limit),
+        hasPrevPage: page > 1,
+      };
     }
 
     if (requestingUser.role === "admin") {
+      // Admin can only see regular users
       queryOptions.where = {
         role: "user",
       };
-      return User.findAll(queryOptions);
+
+      const { count, rows } = await User.findAndCountAll(queryOptions);
+
+      return {
+        users: rows,
+        totalUsers: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: parseInt(page, 10),
+        hasNextPage: page < Math.ceil(count / limit),
+        hasPrevPage: page > 1,
+      };
     }
 
     throw new Error("Unauthorized access");
@@ -323,23 +352,21 @@ class UserService {
     };
   }
 
-  // NEW: Delete User (soft delete by setting is_active to false)
   async deleteUser(requestingUser, targetUserId) {
     // Check permissions
     if (!["admin", "super_admin"].includes(requestingUser.role)) {
       throw new Error("Unauthorized to delete users");
     }
 
-    // Find target user
-    const targetUser = await User.findOne({
+    // Find target user (including soft-deleted ones for complete cleanup)
+    const targetUser = await User.scope("withDeleted").findOne({
       where: {
         id: targetUserId,
-        is_active: true,
       },
     });
 
     if (!targetUser) {
-      throw new Error("User not found or already deleted");
+      throw new Error("User not found");
     }
 
     // Prevent deletion of super_admin by admin
@@ -357,23 +384,99 @@ class UserService {
       throw new Error("Cannot delete your own account");
     }
 
-    // Soft delete user
-    await targetUser.update({
-      is_active: false,
-      deleted_at: new Date(),
-      deleted_by: requestingUser.id,
-    });
-
-    return {
-      success: true,
-      message: "User deleted successfully",
-      deletedUser: {
-        id: targetUser.id,
-        username: targetUser.username,
-        email: targetUser.email,
-        role: targetUser.role,
-      },
+    // Store user info before deletion
+    const deletedUserInfo = {
+      id: targetUser.id,
+      username: targetUser.username,
+      email: targetUser.email,
+      role: targetUser.role,
     };
+
+    // Start transaction for safe deletion
+    const transaction = await User.sequelize.transaction();
+
+    try {
+      // Delete all associated data first (to avoid foreign key constraints)
+
+      // 1. Delete user's devices
+      await Device.destroy({
+        where: { userId: targetUserId },
+        transaction,
+        force: true, // Hard delete
+      });
+
+      // 2. Delete user's tickets (created by user)
+      await Ticket.destroy({
+        where: { userId: targetUserId },
+        transaction,
+        force: true,
+      });
+
+      // 3. Update tickets assigned to this user (set assignedTo to null or reassign)
+      await Ticket.update(
+        { assignedTo: null },
+        {
+          where: { assignedTo: targetUserId },
+          transaction,
+        }
+      );
+
+      // 4. Update tickets resolved by this user (set resolvedBy to null)
+      await Ticket.update(
+        { resolvedBy: null },
+        {
+          where: { resolvedBy: targetUserId },
+          transaction,
+        }
+      );
+
+      // 5. Update tickets escalated to this user (set escalatedTo to null)
+      await Ticket.update(
+        { escalatedTo: null },
+        {
+          where: { escalatedTo: targetUserId },
+          transaction,
+        }
+      );
+
+      // 6. Delete OTP records if exists
+      if (OTP) {
+        await OTP.destroy({
+          where: { email: targetUser.email },
+          transaction,
+          force: true,
+        });
+      }
+
+      // 7. Update any records that reference this user as deleted_by
+      await User.update(
+        { deleted_by: null },
+        {
+          where: { deleted_by: targetUserId },
+          transaction,
+        }
+      );
+
+      // 8. Finally, delete the user completely
+      await User.destroy({
+        where: { id: targetUserId },
+        transaction,
+        force: true, // Hard delete (ignores paranoid)
+      });
+
+      // Commit transaction
+      await transaction.commit();
+
+      return {
+        success: true,
+        message: "User and all associated data deleted permanently",
+        deletedUser: deletedUserInfo,
+      };
+    } catch (error) {
+      // Rollback transaction on error
+      await transaction.rollback();
+      throw new Error(`Failed to delete user: ${error.message}`);
+    }
   }
 
   async updateUserRole(requestingUser, userId, newRole) {

@@ -693,12 +693,8 @@ class ProjectService {
     const whereCondition = {};
 
     if (!["admin", "super_admin", "tester"].includes(userRole)) {
-      // Regular users can see all release projects, not just their own
-      // If you want users to see only their own projects, uncomment the line below
-      // whereCondition.userId = userId;
-    } else {
       whereCondition.versionType = "release";
-    }
+    } 
 
     const { count, rows } = await Project.findAndCountAll({
       where: whereCondition,

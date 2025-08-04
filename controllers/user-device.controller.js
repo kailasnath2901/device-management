@@ -259,19 +259,35 @@ class DeviceController {
         });
       }
 
-      await DeviceService.deleteDeviceByAdmin(deviceId);
+      const result = await DeviceService.deleteDeviceByAdmin(deviceId);
 
       res.json({
         success: true,
         message: "Device deleted successfully",
+        data: result,
       });
     } catch (error) {
+      console.error("Delete device error:", error);
+
+      // Handle specific error for active acquisitions
+      if (error.code === "DEVICE_HAS_ACTIVE_ACQUISITIONS") {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          suggestion:
+            "Please ensure all users remove their project acquisitions from this device before deletion, or use force delete option.",
+        });
+      }
+
       res.status(400).json({
         success: false,
         message: error.message,
       });
     }
   }
+
   //!-----Check the user added or removed any projects--------------
   async getIsModified(req, res) {
     try {

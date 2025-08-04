@@ -26,7 +26,7 @@ const User = sequelize.define(
       allowNull: false,
     },
     role: {
-      type: DataTypes.ENUM("user", "admin", "super_admin","tester"),
+      type: DataTypes.ENUM("user", "admin", "super_admin", "tester"),
       defaultValue: "user",
     },
     last_login: {
@@ -68,18 +68,7 @@ const User = sequelize.define(
       type: DataTypes.ENUM("Standard", "Premium", "Elite"),
       defaultValue: "Standard",
     },
-    deleted_at: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
-    deleted_by: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      references: {
-        model: "User",
-        key: "id",
-      },
-    },
+  
   },
   {
     tableName: "user",
@@ -107,6 +96,7 @@ const User = sequelize.define(
       },
     },
   }
-);
+); 
+
 
 module.exports = User;

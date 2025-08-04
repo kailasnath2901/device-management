@@ -87,6 +87,8 @@ router.delete(
   userController.deleteUser
 );
 
+
+
 // User projects route
 router.get(
   "/get-acquired-projects",

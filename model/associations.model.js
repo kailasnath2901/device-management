@@ -94,52 +94,51 @@ Project.hasMany(Ticket, {
 });
 
 Query.belongsTo(User, {
-  foreignKey: 'userId',
-  as: 'user'
+  foreignKey: "userId",
+  as: "user",
 });
 
 Query.belongsTo(User, {
-  foreignKey: 'resolvedBy',
-  as: 'resolver'
+  foreignKey: "resolvedBy",
+  as: "resolver",
 });
 
 Query.belongsTo(Ticket, {
-  foreignKey: 'ticketId',
-  as: 'ticket'
+  foreignKey: "ticketId",
+  as: "ticket",
 });
 
 // Self-referential associations for Query
 Query.belongsTo(Query, {
-  foreignKey: 'parentQueryId',
-  as: 'parentQuery'
+  foreignKey: "parentQueryId",
+  as: "parentQuery",
 });
 
 Query.hasMany(Query, {
-  foreignKey: 'parentQueryId',
-  as: 'childQueries'
+  foreignKey: "parentQueryId",
+  as: "childQueries",
 });
 
 // QueryLog associations
 Query.hasMany(QueryLog, {
-  foreignKey: 'queryId',
-  as: 'logs'
+  foreignKey: "queryId",
+  as: "logs",
 });
 
 QueryLog.belongsTo(Query, {
-  foreignKey: 'queryId',
-  as: 'query'
+  foreignKey: "queryId",
+  as: "query",
 });
 
 QueryLog.belongsTo(User, {
-  foreignKey: 'userId',
-  as: 'user'
+  foreignKey: "userId",
+  as: "user",
 });
 
 QueryLog.belongsTo(Ticket, {
-  foreignKey: 'ticketId',
-  as: 'ticket'
+  foreignKey: "ticketId",
+  as: "ticket",
 });
-
 
 // TicketLog associations
 TicketLog.belongsTo(Ticket, {
@@ -159,5 +158,5 @@ module.exports = {
   Project,
   Query,
   TicketLog,
-  QueryLog
+  QueryLog,
 };
