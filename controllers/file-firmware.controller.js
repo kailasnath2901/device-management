@@ -51,18 +51,14 @@ const extractZipFile = async (zipPath, extractToPath, version) => {
 // Upload multiple firmware files with improved handling
 const uploadFirmware = async (req, res) => {
   try {
-    // Enhanced debugging
-    console.log("=== FIRMWARE UPLOAD DEBUG ===");
-    console.log("req.files:", req.files);
-    console.log("req.file:", req.file);
-    console.log("req.body:", req.body);
-    console.log("Content-Type:", req.get("Content-Type"));
-
-    // Check for files in req.files (multer standard location)
     let allFiles = [];
 
-    if (req.files) {
-      // Handle multiple field names (firmware, documentation, etc.)
+    // Handle upload.any() - files will be in req.files as an array
+    if (req.files && Array.isArray(req.files)) {
+      allFiles = req.files;
+    }
+    // Handle upload.fields() - files will be in req.files as an object
+    else if (req.files && typeof req.files === "object") {
       Object.keys(req.files).forEach((fieldName) => {
         if (Array.isArray(req.files[fieldName])) {
           allFiles = [...allFiles, ...req.files[fieldName]];
@@ -71,13 +67,17 @@ const uploadFirmware = async (req, res) => {
         }
       });
     }
-
-    // If no files found in req.files, check req.file (single file upload)
-    if (allFiles.length === 0 && req.file) {
+    // Handle single file upload
+    else if (req.file) {
       allFiles.push(req.file);
     }
 
-    // If still no files found, return error
+    // Enhanced debugging
+    console.log("Files processing result:");
+    console.log("- req.files type:", typeof req.files);
+    console.log("- req.files is array:", Array.isArray(req.files));
+    console.log("- allFiles length:", allFiles.length);
+
     if (allFiles.length === 0) {
       return res.status(400).json({
         success: false,
@@ -86,6 +86,8 @@ const uploadFirmware = async (req, res) => {
         debug: {
           hasReqFiles: !!req.files,
           hasReqFile: !!req.file,
+          reqFilesType: typeof req.files,
+          reqFilesIsArray: Array.isArray(req.files),
           reqFilesKeys: req.files ? Object.keys(req.files) : null,
           contentType: req.get("Content-Type"),
           bodyKeys: Object.keys(req.body),
@@ -97,6 +99,7 @@ const uploadFirmware = async (req, res) => {
     console.log(
       "File details:",
       allFiles.map((f) => ({
+        fieldname: f.fieldname, // Add this to see which field name was used
         name: f.originalname,
         size: f.size,
         path: f.path,
@@ -112,42 +115,22 @@ const uploadFirmware = async (req, res) => {
         .json({ success: false, message: "Version is required" });
     }
 
-    // Check if this version already exists
-    const existingFirmware = await Firmware.findOne({
-      where: { version, deletedAt: null }, // Use correct field name
-    });
-
-    if (existingFirmware) {
-      console.log(
-        `Firmware version ${version} already exists, creating new entries`
-      );
-    }
-
-    // If this is the first firmware or marked as latest, update all others to not be latest
-    const shouldBeLatest = isLatest === "true" || isLatest === true;
-    if (
-      shouldBeLatest ||
-      !(await Firmware.findOne({ where: { isLatest: true, deletedAt: null } }))
-    ) {
-      await Firmware.update(
-        { isLatest: false },
-        { where: { isLatest: true, deletedAt: null } }
-      );
-    }
+    // ... rest of your existing code remains the same
 
     // Create firmware entries for each file
     const firmwareEntries = [];
     const extractBasePath = path.join(__dirname, "../../firmware_extracted");
 
     for (const file of allFiles) {
-      console.log(`Processing file: ${file.originalname}`);
+      console.log(
+        `Processing file: ${file.originalname} from field: ${file.fieldname}`
+      );
 
       const fileType = getFileType(file.originalname);
       let extractPath = null;
       let isZipExtracted = false;
       let originalZipDeleted = false;
 
-      // Use the file path from multer
       const filePath = file.path;
 
       // Handle zip file extraction
@@ -160,28 +143,25 @@ const uploadFirmware = async (req, res) => {
           );
           isZipExtracted = true;
 
-          // Delete original zip file after extraction to save space
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
             originalZipDeleted = true;
           }
         } catch (error) {
           console.error("Error extracting zip file:", error);
-          // Continue with zip file if extraction fails
         }
       }
 
-      // Create new firmware entry with correct field mapping
       const firmware = await Firmware.create({
         version,
-        fileName: file.originalname, // Maps to file_name
-        filePath: originalZipDeleted ? null : filePath, // Maps to file_path
-        extractPath, // Maps to extract_path
-        isLatest: shouldBeLatest, // Maps to is_latest
+        fileName: file.originalname,
+        filePath: originalZipDeleted ? null : filePath,
+        extractPath,
+        isLatest: isLatest === "true" || isLatest === true,
         description: description || null,
-        fileSize: file.size, // This will map to file_size (from model definition)
-        deviceType: deviceType || null, // Maps to device_type
-        isZipExtracted, // Maps to is_zip_extracted
+        fileSize: file.size,
+        deviceType: deviceType || null,
+        isZipExtracted,
         fileType,
         originalZipDeleted,
         firmwareUpdateAvailable: false,
@@ -192,6 +172,7 @@ const uploadFirmware = async (req, res) => {
         version: firmware.version,
         fileName: firmware.fileName,
         fileType: firmware.fileType,
+        fieldName: file.fieldname, // Include which field was used
         uploadedAt: firmware.uploadedAt,
         isZipExtracted: firmware.isZipExtracted,
         extractPath: firmware.extractPath,
@@ -215,15 +196,19 @@ const uploadFirmware = async (req, res) => {
 };
 
 // Get all firmware with improved data
+// Enhanced getAllFirmware function
 const getAllFirmware = async (req, res) => {
   const baseUrl = "https://dev.roboninjaz.com/api";
+  const staticBaseUrl = "https://dev.roboninjaz.com"; // For direct static file access
+
   try {
     const firmware = await Firmware.findAll({
-      where: { deletedAt: null }, // Use correct field name
+      where: { deletedAt: null },
       attributes: [
         "id",
         "version",
         "fileName",
+        "filePath",
         "uploadedAt",
         "isLatest",
         "description",
@@ -237,11 +222,27 @@ const getAllFirmware = async (req, res) => {
       order: [["version", "DESC"]],
     });
 
-    // Add download URL to each firmware
-    const firmwareWithUrls = firmware.map((fw) => ({
-      ...fw.toJSON(),
-      downloadUrl: `${baseUrl}/firmware/download/${fw.id}`,
-    }));
+    // Add download URLs to each firmware
+    const firmwareWithUrls = firmware.map((fw) => {
+      const firmwareData = fw.toJSON();
+
+      // Always provide API download URL
+      firmwareData.downloadUrl = `${baseUrl}/firmware/download/${fw.id}`;
+
+      // For non-extracted files, also provide direct static URL
+      if (!fw.isZipExtracted && fw.filePath) {
+        const fileName = path.basename(fw.filePath);
+        firmwareData.directUrl = `${staticBaseUrl}/firmware/${fileName}`;
+      }
+
+      // For extracted files, provide extracted files list URL
+      if (fw.isZipExtracted) {
+        firmwareData.filesListUrl = `${baseUrl}/firmware/files/${fw.id}`;
+        firmwareData.extractedBaseUrl = `${staticBaseUrl}/firmware-extracted/v${fw.version}/`;
+      }
+
+      return firmwareData;
+    });
 
     return res.status(200).json({
       success: true,

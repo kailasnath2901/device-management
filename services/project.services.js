@@ -694,7 +694,7 @@ class ProjectService {
 
     if (!["admin", "super_admin", "tester"].includes(userRole)) {
       whereCondition.versionType = "release";
-    } 
+    }
 
     const { count, rows } = await Project.findAndCountAll({
       where: whereCondition,
@@ -733,7 +733,10 @@ class ProjectService {
     const projectsWithImageUrls = rows.map((project) => {
       const projectData = project.toJSON();
       if (projectData.images) {
-        projectData.images = this.generateImageUrls(projectData.images);
+        projectData.images = projectData.images.map((image) => ({
+          ...image,
+          publicUrl: `${baseUrl}/projects/${image.projectId}/images/${image.filename}`,
+        }));
       }
       return projectData;
     });
@@ -887,11 +890,12 @@ class ProjectService {
 
   // Helper method to generate image URLs (implement based on your needs)
   generateImageUrls(images) {
+    const baseUrl =
+      process.env.BASE_URL || `http://localhost:${process.env.PORT || 8015}`;
+
     return images.map((image) => ({
       ...image,
-      publicUrl:
-        image.publicUrl ||
-        `/projects/${image.projectId}/images/${image.filename}`,
+      publicUrl: `${baseUrl}/projects/${image.projectId}/images/${image.filename}`,
     }));
   }
 

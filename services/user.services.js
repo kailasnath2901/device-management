@@ -14,39 +14,74 @@ const OTP = require("../model/otp.model");
 
 class UserService {
   async signup(userData) {
-    const { username, email, password, mobile_no } = userData;
+    try {
+      const { username, email, password, mobile_no } = userData;
 
-    const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
-      throw new Error("User already exists");
+      // Check for existing users (including inactive ones)
+      const existingUser = await User.scope("withInactive").findOne({
+        where: {
+          [Op.or]: [{ email }, { username }],
+        },
+      });
+
+      if (existingUser) {
+        if (existingUser.email === email) {
+          throw new Error("Email already exists");
+        }
+        if (existingUser.username === username) {
+          throw new Error("Username already exists");
+        }
+      }
+
+      // Validate mobile number format if provided
+      if (mobile_no && mobile_no.trim() !== "") {
+        const cleanMobile = mobile_no.toString().trim();
+        if (!/^\d{10}$/.test(cleanMobile)) {
+          throw new Error("Mobile number must be exactly 10 digits");
+        }
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      const user = await User.create({
+        username: username.trim(),
+        email: email.toLowerCase().trim(),
+        password: hashedPassword,
+        mobile_no:
+          mobile_no && mobile_no.trim() !== "" ? mobile_no.trim() : null,
+        role: "user",
+        is_email_verified: false,
+        is_active: true,
+      });
+
+      await OTPService.generateAndSendOTP(email, "email_verification");
+
+      return {
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          is_email_verified: user.is_email_verified,
+        },
+        message:
+          "User created successfully. Please verify your email with the OTP sent to your email address.",
+      };
+    } catch (error) {
+      console.error("Signup error:", error);
+
+      // Handle Sequelize validation errors
+      if (error.name === "SequelizeValidationError") {
+        const validationErrors = error.errors.map((err) => err.message);
+        throw new Error(`Validation failed: ${validationErrors.join(", ")}`);
+      }
+
+      if (error.name === "SequelizeUniqueConstraintError") {
+        throw new Error("Email or username already exists");
+      }
+
+      throw error;
     }
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create user with email unverified
-    const user = await User.create({
-      username,
-      email,
-      password: hashedPassword,
-      mobile_no,
-      role: "user",
-      is_email_verified: false, // Default is false
-    });
-
-    // Send verification OTP
-    await OTPService.generateAndSendOTP(email, "email_verification");
-
-    return {
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        is_email_verified: user.is_email_verified,
-      },
-      message:
-        "User created successfully. Please verify your email with the OTP sent to your email address.",
-    };
   }
 
   // New method: Verify email with OTP
@@ -358,11 +393,9 @@ class UserService {
       throw new Error("Unauthorized to delete users");
     }
 
-    // Find target user (including soft-deleted ones for complete cleanup)
-    const targetUser = await User.scope("withDeleted").findOne({
-      where: {
-        id: targetUserId,
-      },
+    // Find target user (including inactive ones)
+    const targetUser = await User.scope("withInactive").findOne({
+      where: { id: targetUserId },
     });
 
     if (!targetUser) {
@@ -374,7 +407,7 @@ class UserService {
       throw new Error("Admins cannot delete super admins");
     }
 
-    // Prevent deletion of admin by admin (only super_admin can delete admins)
+    // Prevent deletion of admin by admin
     if (requestingUser.role === "admin" && targetUser.role === "admin") {
       throw new Error("Admins cannot delete other admins");
     }
@@ -384,7 +417,6 @@ class UserService {
       throw new Error("Cannot delete your own account");
     }
 
-    // Store user info before deletion
     const deletedUserInfo = {
       id: targetUser.id,
       username: targetUser.username,
@@ -396,23 +428,21 @@ class UserService {
     const transaction = await User.sequelize.transaction();
 
     try {
-      // Delete all associated data first (to avoid foreign key constraints)
+      // Delete all associated data first
 
       // 1. Delete user's devices
       await Device.destroy({
         where: { userId: targetUserId },
         transaction,
-        force: true, // Hard delete
       });
 
-      // 2. Delete user's tickets (created by user)
+      // 2. Delete user's tickets
       await Ticket.destroy({
         where: { userId: targetUserId },
         transaction,
-        force: true,
       });
 
-      // 3. Update tickets assigned to this user (set assignedTo to null or reassign)
+      // 3. Update tickets assigned to this user
       await Ticket.update(
         { assignedTo: null },
         {
@@ -421,7 +451,7 @@ class UserService {
         }
       );
 
-      // 4. Update tickets resolved by this user (set resolvedBy to null)
+      // 4. Update tickets resolved by this user
       await Ticket.update(
         { resolvedBy: null },
         {
@@ -430,7 +460,7 @@ class UserService {
         }
       );
 
-      // 5. Update tickets escalated to this user (set escalatedTo to null)
+      // 5. Update tickets escalated to this user
       await Ticket.update(
         { escalatedTo: null },
         {
@@ -439,32 +469,28 @@ class UserService {
         }
       );
 
-      // 6. Delete OTP records if exists
+      // 6. Delete OTP records
       if (OTP) {
         await OTP.destroy({
           where: { email: targetUser.email },
           transaction,
-          force: true,
         });
       }
 
-      // 7. Update any records that reference this user as deleted_by
-      await User.update(
-        { deleted_by: null },
-        {
-          where: { deleted_by: targetUserId },
+      // 7. Delete user project acquisitions
+      if (UserProjectAcquisition) {
+        await UserProjectAcquisition.destroy({
+          where: { userId: targetUserId },
           transaction,
-        }
-      );
+        });
+      }
 
-      // 8. Finally, delete the user completely
-      await User.destroy({
+      // 8. Finally, delete the user completely (hard delete)
+      await User.scope("withInactive").destroy({
         where: { id: targetUserId },
         transaction,
-        force: true, // Hard delete (ignores paranoid)
       });
 
-      // Commit transaction
       await transaction.commit();
 
       return {
@@ -473,9 +499,64 @@ class UserService {
         deletedUser: deletedUserInfo,
       };
     } catch (error) {
-      // Rollback transaction on error
       await transaction.rollback();
       throw new Error(`Failed to delete user: ${error.message}`);
+    }
+  }
+
+  // Method to clean up existing soft-deleted records
+  async cleanupSoftDeletedUsers() {
+    const transaction = await User.sequelize.transaction();
+
+    try {
+      // Find all users with deleted_at not null or is_active false
+      const softDeletedUsers = await User.scope("withInactive").findAll({
+        where: {
+          [Op.or]: [{ is_active: false }, { deleted_at: { [Op.ne]: null } }],
+        },
+        transaction,
+      });
+
+      console.log(
+        `Found ${softDeletedUsers.length} soft-deleted users to clean up`
+      );
+
+      for (const user of softDeletedUsers) {
+        // Delete associated data
+        await Device.destroy({
+          where: { userId: user.id },
+          transaction,
+        });
+
+        await OTP.destroy({
+          where: { email: user.email },
+          transaction,
+        });
+
+        if (UserProjectAcquisition) {
+          await UserProjectAcquisition.destroy({
+            where: { userId: user.id },
+            transaction,
+          });
+        }
+
+        // Hard delete the user
+        await User.scope("withInactive").destroy({
+          where: { id: user.id },
+          transaction,
+        });
+      }
+
+      await transaction.commit();
+
+      return {
+        success: true,
+        message: `Cleaned up ${softDeletedUsers.length} soft-deleted users`,
+        count: softDeletedUsers.length,
+      };
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
     }
   }
 

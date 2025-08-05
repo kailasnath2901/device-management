@@ -22,6 +22,8 @@ app.use(
       "http://64.227.138.175:8025",
       "http://192.168.10.124:8025",
       "http://localhost:3000",
+      "http://localhost:8010",
+      "https://devui.roboninjaz.com",
       "https://api.roboninjaz.com",
       "https://roboninjaz.com",
       "https://dev.roboninjaz.com",
@@ -30,6 +32,11 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
+);
+app.use("/firmware", express.static(path.join(__dirname, "uploads/firmware")));
+app.use(
+  "/firmware-extracted",
+  express.static(path.join(__dirname, "firmware_extracted"))
 );
 
 // Static file serving
