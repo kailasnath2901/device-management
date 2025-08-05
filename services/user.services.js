@@ -13,86 +13,88 @@ const Ticket = require("../model/ticket.model");
 const OTP = require("../model/otp.model");
 
 class UserService {
-async signup(userData) {
-  try {
-    const { username, email, password, mobile_no } = userData;
+  async signup(userData) {
+    try {
+      const { username, email, password, mobile_no } = userData;
 
-    // Check for existing users (including inactive ones)
-    // Use 'withDeleted' scope instead of 'withInactive'
-    const existingUser = await User.scope("withDeleted").findOne({
-      where: {
-        [Op.or]: [{ email }, { username }],
-      },
-    });
+      // Check for existing users (including inactive ones)
+      // Use 'withDeleted' scope instead of 'withInactive'
+      const existingUser = await User.scope("withDeleted").findOne({
+        where: {
+          [Op.or]: [{ email }, { username }],
+        },
+      });
 
-    if (existingUser) {
-      if (existingUser.email === email) {
-        throw new Error("Email already exists");
+      if (existingUser) {
+        if (existingUser.email === email) {
+          throw new Error("Email already exists");
+        }
+        if (existingUser.username === username) {
+          throw new Error("Username already exists");
+        }
       }
-      if (existingUser.username === username) {
-        throw new Error("Username already exists");
+
+      // Validate mobile number format if provided
+      if (mobile_no && mobile_no.trim() !== "") {
+        const cleanMobile = mobile_no.toString().trim();
+        if (!/^\d{10}$/.test(cleanMobile)) {
+          throw new Error("Mobile number must be exactly 10 digits");
+        }
       }
-    }
 
-    // Validate mobile number format if provided
-    if (mobile_no && mobile_no.trim() !== "") {
-      const cleanMobile = mobile_no.toString().trim();
-      if (!/^\d{10}$/.test(cleanMobile)) {
-        throw new Error("Mobile number must be exactly 10 digits");
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      const user = await User.create({
+        username: username.trim(),
+        email: email.toLowerCase().trim(),
+        password: hashedPassword,
+        mobile_no:
+          mobile_no && mobile_no.trim() !== "" ? mobile_no.trim() : null,
+        role: "user",
+        is_email_verified: false,
+        is_active: true,
+      });
+
+      await OTPService.generateAndSendOTP(email, "email_verification");
+
+      return {
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          is_email_verified: user.is_email_verified,
+        },
+        message:
+          "User created successfully. Please verify your email with the OTP sent to your email address.",
+      };
+    } catch (error) {
+      console.error("Signup error:", error);
+
+      // Handle Sequelize validation errors
+      if (error.name === "SequelizeValidationError") {
+        const validationErrors = error.errors.map((err) => err.message);
+        throw new Error(`Validation failed: ${validationErrors.join(", ")}`);
       }
+
+      if (error.name === "SequelizeUniqueConstraintError") {
+        throw new Error("Email or username already exists");
+      }
+
+      throw error;
     }
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const user = await User.create({
-      username: username.trim(),
-      email: email.toLowerCase().trim(),
-      password: hashedPassword,
-      mobile_no:
-        mobile_no && mobile_no.trim() !== "" ? mobile_no.trim() : null,
-      role: "user",
-      is_email_verified: false,
-      is_active: true,
-    });
-
-    await OTPService.generateAndSendOTP(email, "email_verification");
-
-    return {
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        is_email_verified: user.is_email_verified,
-      },
-      message:
-        "User created successfully. Please verify your email with the OTP sent to your email address.",
-    };
-  } catch (error) {
-    console.error("Signup error:", error);
-
-    // Handle Sequelize validation errors
-    if (error.name === "SequelizeValidationError") {
-      const validationErrors = error.errors.map((err) => err.message);
-      throw new Error(`Validation failed: ${validationErrors.join(", ")}`);
-    }
-
-    if (error.name === "SequelizeUniqueConstraintError") {
-      throw new Error("Email or username already exists");
-    }
-
-    throw error;
   }
-}
 
-  // New method: Verify email with OTP
+  // Fixed verifyEmail method
   async verifyEmail(email, otp) {
     try {
       // Verify OTP
       await OTPService.verifyOTP(email, otp, "email_verification");
 
-      // Find and update user
-      const user = await User.findOne({ where: { email } });
+      // Find user using withDeleted scope to include inactive users
+      const user = await User.scope("withDeleted").findOne({
+        where: { email },
+      });
       if (!user) {
         throw new Error("User not found");
       }
@@ -101,8 +103,11 @@ async signup(userData) {
         throw new Error("Email already verified");
       }
 
-      // Update user as verified
-      await user.update({ is_email_verified: true });
+      // Update user as verified and activate if needed
+      await user.update({
+        is_email_verified: true,
+        is_active: true, // Reactivate user when email is verified
+      });
 
       // Send welcome email
       await EmailService.sendWelcomeEmail(email, user.username);
@@ -124,7 +129,7 @@ async signup(userData) {
 
   // New method: Resend verification OTP
   async resendVerificationOTP(email) {
-    const user = await User.findOne({ where: { email } });
+    const user = await User.scope("withDeleted").findOne({ where: { email } });
     if (!user) {
       throw new Error("User not found");
     }
