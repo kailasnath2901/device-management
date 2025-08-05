@@ -262,16 +262,6 @@ class ProjectService {
     }
   }
 
-  // Generate public accessible URLs for images
-  generateImageUrls(images, baseUrl = "") {
-    return images.map((image) => ({
-      id: image.id,
-      imageName: image.originalName,
-      publicUrl: `${baseUrl}/uploads/projects/${image.projectId}/${image.filename}`,
-      isMainImage: image.isMainImage,
-    }));
-  }
-
   async createProject(req, res) {
     try {
       const userId = req.user.id;
@@ -577,10 +567,112 @@ class ProjectService {
         throw new Error("Project not found");
       }
 
-      const { requiredComponents = [], ...otherData } = updateData;
+      const {
+        requiredComponents = [],
+        imagesToDelete = [],
+        filesToDelete = [],
+        ...otherData
+      } = updateData;
 
       // Update basic project data
       await project.update(otherData, { transaction });
+
+      // Handle image deletions
+      if (imagesToDelete.length > 0) {
+        for (const imageId of imagesToDelete) {
+          const imageToDelete = await ProjectImage.findByPk(imageId, {
+            transaction,
+          });
+          if (imageToDelete && imageToDelete.projectId === project.id) {
+            // Delete physical file
+            if (fs.existsSync(imageToDelete.filePath)) {
+              fs.unlinkSync(imageToDelete.filePath);
+            }
+            // Delete from database
+            await imageToDelete.destroy({ transaction });
+          }
+        }
+      }
+
+      // Handle file deletions
+      if (filesToDelete.length > 0) {
+        for (const fileId of filesToDelete) {
+          const fileToDelete = await ProjectFile.findByPk(fileId, {
+            transaction,
+          });
+          if (fileToDelete && fileToDelete.projectId === project.id) {
+            // Delete physical file
+            if (fs.existsSync(fileToDelete.filePath)) {
+              fs.unlinkSync(fileToDelete.filePath);
+            }
+            // Delete from database
+            await fileToDelete.destroy({ transaction });
+          }
+        }
+      }
+
+      // Create project folder structure
+      const projectFolder = path.join(
+        process.cwd(),
+        "public",
+        "projects",
+        projectId.toString()
+      );
+
+      // Handle new images
+      if (files.images && files.images.length > 0) {
+        const imageFolder = path.join(projectFolder, "images");
+        if (!fs.existsSync(imageFolder)) {
+          fs.mkdirSync(imageFolder, { recursive: true });
+        }
+
+        const imageData = files.images.map((image) => {
+          const imagePath = path.join(imageFolder, image.filename);
+
+          // Move file to correct location
+          if (fs.existsSync(image.path)) {
+            fs.renameSync(image.path, imagePath);
+          }
+
+          return {
+            projectId,
+            filename: image.filename,
+            originalName: image.originalname,
+            filePath: imagePath,
+            fileSize: image.size,
+            mimetype: image.mimetype,
+            isMainImage: false,
+          };
+        });
+
+        await ProjectImage.bulkCreate(imageData, { transaction });
+      }
+
+      // Handle new files
+      if (files.projectFiles && files.projectFiles.length > 0) {
+        const fileData = files.projectFiles.map((file) => {
+          const filePath = path.join(projectFolder, file.filename);
+
+          // Move file to correct location
+          if (fs.existsSync(file.path)) {
+            fs.renameSync(file.path, filePath);
+          }
+
+          return {
+            projectId,
+            filename: file.filename,
+            originalName: file.originalname,
+            fileType: path.extname(file.originalname),
+            fileSize: file.size,
+            filePath: filePath,
+            mimetype: file.mimetype,
+            isZipExtracted: false,
+            originalZipName: null,
+          };
+        });
+
+        await ProjectFile.bulkCreate(fileData, { transaction });
+      }
 
       // Update components if provided
       if (requiredComponents.length > 0) {
@@ -593,46 +685,16 @@ class ProjectService {
         // Add new components
         const componentData = requiredComponents.map((comp) => ({
           projectId,
-          componentId: comp.componentId,
-          quantity: comp.quantity || 1,
+          componentId: typeof comp === "object" ? comp.componentId : comp,
+          quantity: typeof comp === "object" ? comp.quantity || 1 : 1,
         }));
 
         await ProjectComponent.bulkCreate(componentData, { transaction });
       }
 
-      // Handle new images
-      if (files.images && files.images.length > 0) {
-        const imageData = files.images.map((image) => ({
-          projectId,
-          filename: image.filename,
-          originalName: image.originalname,
-          filePath: image.path,
-          fileSize: image.size,
-          mimetype: image.mimetype,
-          isMainImage: false,
-        }));
-
-        await ProjectImage.bulkCreate(imageData, { transaction });
-      }
-
-      // Handle new files
-      if (files.projectFiles && files.projectFiles.length > 0) {
-        const fileData = files.projectFiles.map((file) => ({
-          projectId,
-          filename: file.filename,
-          originalName: file.originalname,
-          fileType: path.extname(file.originalname),
-          fileSize: file.size,
-          filePath: file.path,
-          mimetype: file.mimetype,
-          isZipExtracted: file.isExtracted || false,
-          originalZipName: file.isExtracted ? file.originalname : null,
-        }));
-
-        await ProjectFile.bulkCreate(fileData, { transaction });
-      }
-
       await transaction.commit();
+
+      // Return the updated project with publicUrls
       return await this.getProjectById(projectId);
     } catch (error) {
       await transaction.rollback();
@@ -676,8 +738,14 @@ class ProjectService {
 
       // Add public URLs for images
       const projectData = project.toJSON();
+      const baseUrl =
+        process.env.BASE_URL || `http://localhost:${process.env.PORT || 8015}`;
+
       if (projectData.images) {
-        projectData.images = this.generateImageUrls(projectData.images);
+        projectData.images = projectData.images.map((image) => ({
+          ...image,
+          publicUrl: `${baseUrl}/projects/${image.projectId}/images/${image.filename}`,
+        }));
       }
 
       return projectData;
@@ -732,6 +800,8 @@ class ProjectService {
     // Add public URLs for images
     const projectsWithImageUrls = rows.map((project) => {
       const projectData = project.toJSON();
+      const baseUrl =
+        process.env.BASE_URL || `http://localhost:${process.env.PORT || 8015}`;
       if (projectData.images) {
         projectData.images = projectData.images.map((image) => ({
           ...image,
@@ -888,7 +958,6 @@ class ProjectService {
     }
   }
 
-  // Helper method to generate image URLs (implement based on your needs)
   generateImageUrls(images) {
     const baseUrl =
       process.env.BASE_URL || `http://localhost:${process.env.PORT || 8015}`;

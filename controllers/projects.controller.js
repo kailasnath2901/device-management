@@ -542,34 +542,55 @@ class ProjectController {
     }
   }
 
-  async editProject(req, res) {
+  async getProject(req, res) {
     try {
-      const { projectId } = req.params; // This is the primary key id
+      const { projectId } = req.params;
       const userId = req.user.id;
       const userRole = req.user.role;
 
-      // Find existing project by primary key
-      const existingProject = await Project.findByPk(projectId, {
-        include: [
-          {
-            model: ProjectFile,
-            as: "files",
-          },
-          {
-            model: ProjectImage,
-            as: "images",
-          },
-          {
-            model: Category,
-            as: "category",
-          },
-          {
-            model: Component,
-            as: "components",
-            through: { attributes: [] },
-          },
-        ],
+      // Use the service method instead of direct Sequelize query
+      const project = await ProjectService.getProjectById(projectId);
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message: "Project not found",
+        });
+      }
+
+      // Authorization check for viewing
+      if (
+        userRole !== "admin" &&
+        userRole !== "super_admin" &&
+        project.userId !== userId
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized to view this project",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        project: project,
       });
+    } catch (error) {
+      console.error("Error fetching project:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  async editProject(req, res) {
+    try {
+      const { projectId } = req.params;
+      const userId = req.user.id;
+      const userRole = req.user.role;
+
+      // Find existing project by primary key (for authorization check)
+      const existingProject = await Project.findByPk(projectId);
 
       if (!existingProject) {
         return res.status(404).json({
@@ -598,11 +619,10 @@ class ProjectController {
 
       // Update fields if provided
       if (req.body.name) updateData.name = req.body.name;
-      if (req.body.projectId) updateData.projectId = req.body.projectId; // Allow updating custom projectId
+      if (req.body.projectId) updateData.projectId = req.body.projectId;
       if (req.body.description !== undefined)
         updateData.description = req.body.description;
       if (req.body.keywords !== undefined) {
-        // Handle keywords update
         let keywordsList = [];
         if (typeof req.body.keywords === "string") {
           keywordsList = req.body.keywords
@@ -639,160 +659,57 @@ class ProjectController {
       if (req.body.dashboard !== undefined)
         updateData.dashboard = req.body.dashboard;
 
-      // Update project basic info
-      await existingProject.update(updateData);
+      // Handle required components
+      if (req.body.requiredComponents) {
+        try {
+          updateData.requiredComponents = JSON.parse(
+            req.body.requiredComponents
+          );
+        } catch (e) {
+          console.error("Error parsing required components:", e);
+          updateData.requiredComponents = [];
+        }
+      }
 
-      const projectFolder = path.join(
-        process.cwd(),
-        "public",
-        "projects",
-        projectId.toString()
-      );
+      // Prepare files object for service
+      const files = {};
 
-      // Handle image updates
-      let imagesToDelete = [];
+      // Handle images to delete
       if (req.body.imagesToDelete) {
         try {
-          imagesToDelete = JSON.parse(req.body.imagesToDelete);
+          const imagesToDelete = JSON.parse(req.body.imagesToDelete);
+          updateData.imagesToDelete = imagesToDelete;
         } catch (e) {
           console.error("Error parsing imagesToDelete:", e);
         }
       }
 
-      // Delete specified images
-      if (imagesToDelete.length > 0) {
-        for (const imageId of imagesToDelete) {
-          const imageToDelete = await ProjectImage.findByPk(imageId);
-          if (imageToDelete && imageToDelete.projectId === existingProject.id) {
-            // Delete physical file
-            if (fs.existsSync(imageToDelete.filePath)) {
-              fs.unlinkSync(imageToDelete.filePath);
-            }
-            // Delete from database
-            await imageToDelete.destroy();
-          }
-        }
-      }
-
-      // Handle new images
-      if (req.files && req.files.images) {
-        const imageFolder = path.join(projectFolder, "images");
-        if (!fs.existsSync(imageFolder)) {
-          fs.mkdirSync(imageFolder, { recursive: true });
-        }
-
-        const imagePromises = req.files.images.map(async (imageFile) => {
-          const imagePath = path.join(imageFolder, imageFile.filename);
-          fs.renameSync(imageFile.path, imagePath);
-
-          return ProjectImage.create({
-            projectId: existingProject.id,
-            filename: imageFile.filename,
-            originalName: imageFile.originalname,
-            filePath: imagePath,
-            publicUrl: `/projects/${existingProject.id}/images/${imageFile.filename}`,
-            fileSize: imageFile.size,
-            mimetype: imageFile.mimetype,
-          });
-        });
-
-        await Promise.all(imagePromises);
-      }
-
-      // Handle files update
-      let filesToDelete = [];
+      // Handle files to delete
       if (req.body.filesToDelete) {
         try {
-          filesToDelete = JSON.parse(req.body.filesToDelete);
+          const filesToDelete = JSON.parse(req.body.filesToDelete);
+          updateData.filesToDelete = filesToDelete;
         } catch (e) {
           console.error("Error parsing filesToDelete:", e);
         }
       }
 
-      // Delete specified files
-      if (filesToDelete.length > 0) {
-        for (const fileId of filesToDelete) {
-          const fileToDelete = await ProjectFile.findByPk(fileId);
-          if (fileToDelete && fileToDelete.projectId === existingProject.id) {
-            // Delete physical file
-            if (fs.existsSync(fileToDelete.filePath)) {
-              fs.unlinkSync(fileToDelete.filePath);
-            }
-            // Delete from database
-            await fileToDelete.destroy();
-          }
+      // Handle new uploaded files
+      if (req.files) {
+        if (req.files.images) {
+          files.images = req.files.images;
+        }
+        if (req.files.files) {
+          files.projectFiles = req.files.files;
         }
       }
 
-      // Handle new files
-      if (req.files && req.files.files) {
-        const filesPromises = req.files.files.map(async (file) => {
-          const filePath = path.join(projectFolder, file.filename);
-          fs.renameSync(file.path, filePath);
-
-          return ProjectFile.create({
-            projectId: existingProject.id,
-            filename: file.filename,
-            originalName: file.originalname,
-            fileType: path.extname(file.originalname),
-            fileSize: file.size,
-            filePath: filePath,
-            mimetype: file.mimetype,
-            isZipExtracted: false,
-            originalZipName: null,
-          });
-        });
-
-        await Promise.all(filesPromises);
-      }
-
-      // Handle required components update
-      if (req.body.requiredComponents) {
-        try {
-          const requiredComponents = JSON.parse(req.body.requiredComponents);
-
-          // Remove existing components
-          await ProjectComponent.destroy({
-            where: { projectId: existingProject.id },
-          });
-
-          // Add new components
-          if (requiredComponents.length > 0) {
-            const componentPromises = requiredComponents.map((componentId) =>
-              ProjectComponent.create({
-                projectId: existingProject.id,
-                componentId: componentId,
-              })
-            );
-            await Promise.all(componentPromises);
-          }
-        } catch (e) {
-          console.error("Error updating required components:", e);
-        }
-      }
-
-      // Fetch updated project with all associations
-      const updatedProject = await Project.findByPk(projectId, {
-        include: [
-          {
-            model: ProjectFile,
-            as: "files",
-          },
-          {
-            model: ProjectImage,
-            as: "images",
-          },
-          {
-            model: Category,
-            as: "category",
-          },
-          {
-            model: Component,
-            as: "components",
-            through: { attributes: [] },
-          },
-        ],
-      });
+      // Use the service method to update the project
+      const updatedProject = await ProjectService.updateProject(
+        projectId,
+        updateData,
+        files
+      );
 
       return res.status(200).json({
         success: true,
@@ -801,66 +718,6 @@ class ProjectController {
       });
     } catch (error) {
       console.error("Error updating project:", error);
-      return res.status(500).json({
-        success: false,
-        message: error.message,
-      });
-    }
-  }
-
-  async getProject(req, res) {
-    try {
-      const { projectId } = req.params;
-      const userId = req.user.id;
-      const userRole = req.user.role;
-
-      const project = await Project.findByPk(projectId, {
-        include: [
-          {
-            model: ProjectFile,
-            as: "files",
-          },
-          {
-            model: ProjectImage,
-            as: "images",
-          },
-          {
-            model: Category,
-            as: "category",
-          },
-          {
-            model: Component,
-            as: "components",
-            through: { attributes: [] },
-          },
-        ],
-      });
-
-      if (!project) {
-        return res.status(404).json({
-          success: false,
-          message: "Project not found",
-        });
-      }
-
-      // Authorization check for viewing
-      if (
-        userRole !== "admin" &&
-        userRole !== "super_admin" &&
-        project.userId !== userId
-      ) {
-        return res.status(403).json({
-          success: false,
-          message: "Unauthorized to view this project",
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        project: project,
-      });
-    } catch (error) {
-      console.error("Error fetching project:", error);
       return res.status(500).json({
         success: false,
         message: error.message,
