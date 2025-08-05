@@ -393,123 +393,122 @@ class UserService {
     };
   }
 
-async deleteUser(requestingUser, targetUserId) {
-  // Check permissions
-  if (!["admin", "super_admin"].includes(requestingUser.role)) {
-    throw new Error("Unauthorized to delete users");
-  }
-
-  // Find target user (including inactive ones) - FIXED: changed withInactive to withDeleted
-  const targetUser = await User.scope("withDeleted").findOne({
-    where: { id: targetUserId },
-  });
-
-  if (!targetUser) {
-    throw new Error("User not found");
-  }
-
-  // Prevent deletion of super_admin by admin
-  if (requestingUser.role === "admin" && targetUser.role === "super_admin") {
-    throw new Error("Admins cannot delete super admins");
-  }
-
-  // Prevent deletion of admin by admin
-  if (requestingUser.role === "admin" && targetUser.role === "admin") {
-    throw new Error("Admins cannot delete other admins");
-  }
-
-  // Prevent self-deletion
-  if (requestingUser.id === targetUser.id) {
-    throw new Error("Cannot delete your own account");
-  }
-
-  const deletedUserInfo = {
-    id: targetUser.id,
-    username: targetUser.username,
-    email: targetUser.email,
-    role: targetUser.role,
-  };
-
-  // Start transaction for safe deletion
-  const transaction = await User.sequelize.transaction();
-
-  try {
-    // Delete all associated data first
-
-    // 1. Delete user's devices
-    await Device.destroy({
-      where: { userId: targetUserId },
-      transaction,
-    });
-
-    // 2. Delete user's tickets
-    await Ticket.destroy({
-      where: { userId: targetUserId },
-      transaction,
-    });
-
-    // 3. Update tickets assigned to this user
-    await Ticket.update(
-      { assignedTo: null },
-      {
-        where: { assignedTo: targetUserId },
-        transaction,
-      }
-    );
-
-    // 4. Update tickets resolved by this user
-    await Ticket.update(
-      { resolvedBy: null },
-      {
-        where: { resolvedBy: targetUserId },
-        transaction,
-      }
-    );
-
-    // 5. Update tickets escalated to this user
-    await Ticket.update(
-      { escalatedTo: null },
-      {
-        where: { escalatedTo: targetUserId },
-        transaction,
-      }
-    );
-
-    // 6. Delete OTP records
-    if (OTP) {
-      await OTP.destroy({
-        where: { email: targetUser.email },
-        transaction,
-      });
+  async deleteUser(requestingUser, targetUserId) {
+    // Check permissions
+    if (!["admin", "super_admin"].includes(requestingUser.role)) {
+      throw new Error("Unauthorized to delete users");
     }
 
-    // 7. Delete user project acquisitions
-    if (UserProjectAcquisition) {
-      await UserProjectAcquisition.destroy({
+    // Find target user (including inactive ones) - FIXED: changed withInactive to withDeleted
+    const targetUser = await User.scope("withDeleted").findOne({
+      where: { id: targetUserId },
+    });
+
+    if (!targetUser) {
+      throw new Error("User not found");
+    }
+
+    // Prevent deletion of super_admin by admin
+    if (requestingUser.role === "admin" && targetUser.role === "super_admin") {
+      throw new Error("Admins cannot delete super admins");
+    }
+
+    // Prevent deletion of admin by admin
+    if (requestingUser.role === "admin" && targetUser.role === "admin") {
+      throw new Error("Admins cannot delete other admins");
+    }
+
+    // Prevent self-deletion
+    if (requestingUser.id === targetUser.id) {
+      throw new Error("Cannot delete your own account");
+    }
+
+    const deletedUserInfo = {
+      id: targetUser.id,
+      username: targetUser.username,
+      email: targetUser.email,
+      role: targetUser.role,
+    };
+
+    // Start transaction for safe deletion
+    const transaction = await User.sequelize.transaction();
+
+    try {
+      // Delete all associated data first
+
+      // 1. Delete user's devices
+      await Device.destroy({
         where: { userId: targetUserId },
         transaction,
       });
+
+      // 2. Delete user's tickets
+      await Ticket.destroy({
+        where: { userId: targetUserId },
+        transaction,
+      });
+
+      // 3. Update tickets assigned to this user
+      await Ticket.update(
+        { assignedTo: null },
+        {
+          where: { assignedTo: targetUserId },
+          transaction,
+        }
+      );
+
+      // 4. Update tickets resolved by this user
+      await Ticket.update(
+        { resolvedBy: null },
+        {
+          where: { resolvedBy: targetUserId },
+          transaction,
+        }
+      );
+
+      // 5. Update tickets escalated to this user
+      await Ticket.update(
+        { escalatedTo: null },
+        {
+          where: { escalatedTo: targetUserId },
+          transaction,
+        }
+      );
+
+      // 6. Delete OTP records
+      if (OTP) {
+        await OTP.destroy({
+          where: { email: targetUser.email },
+          transaction,
+        });
+      }
+
+      // 7. Delete user project acquisitions
+      if (UserProjectAcquisition) {
+        await UserProjectAcquisition.destroy({
+          where: { userId: targetUserId },
+          transaction,
+        });
+      }
+
+      // 8. Finally, delete the user completely (hard delete) - FIXED: changed withInactive to withDeleted
+      await User.scope("withDeleted").destroy({
+        where: { id: targetUserId },
+        transaction,
+      });
+
+      await transaction.commit();
+
+      return {
+        success: true,
+        message: "User and all associated data deleted permanently",
+        deletedUser: deletedUserInfo,
+      };
+    } catch (error) {
+      await transaction.rollback();
+      throw new Error(`Failed to delete user: ${error.message}`);
     }
-
-    // 8. Finally, delete the user completely (hard delete) - FIXED: changed withInactive to withDeleted
-    await User.scope("withDeleted").destroy({
-      where: { id: targetUserId },
-      transaction,
-    });
-
-    await transaction.commit();
-
-    return {
-      success: true,
-      message: "User and all associated data deleted permanently",
-      deletedUser: deletedUserInfo,
-    };
-  } catch (error) {
-    await transaction.rollback();
-    throw new Error(`Failed to delete user: ${error.message}`);
   }
-}
-
   // Method to clean up existing soft-deleted records
   async cleanupSoftDeletedUsers() {
     const transaction = await User.sequelize.transaction();
