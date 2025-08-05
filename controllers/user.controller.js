@@ -266,7 +266,7 @@ exports.deleteUser = async (req, res) => {
       });
     }
 
-    const result = await userService.deleteUser(requestingUser, userId);
+    const result = await userService.forceDeleteUser(requestingUser, userId);
     res.json({
       success: true,
       message: result.message,
