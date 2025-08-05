@@ -25,10 +25,10 @@ router.get("/latest", firmwareController.getLatestFirmware);
 // Get firmware by version
 router.get("/version/:version", firmwareController.getFirmwareByVersion);
 
-router.get("/files/:id", firmwareController.listExtractedFiles);
+router.get("/files/:id", authenticate, firmwareController.listExtractedFiles);
 
-// Download firmware file - supports both regular files and extracted ZIP contents
-router.get("/download/:id", firmwareController.downloadFirmware);
+// Download firmware file - REQUIRES AUTH for actual file access
+router.get("/download/:id", authenticate, firmwareController.downloadFirmware);
 
 // Set a firmware as latest (restricted to admins)
 router.put(

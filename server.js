@@ -33,15 +33,15 @@ app.use(
     credentials: true,
   })
 );
-app.use("/firmware", express.static(path.join(__dirname, "uploads/firmware")));
-app.use(
-  "/firmware-extracted",
-  express.static(path.join(__dirname, "firmware_extracted"))
-);
+// app.use("/firmware", express.static(path.join(__dirname, "uploads/firmware")));
+// app.use(
+//   "/firmware-extracted",
+//   express.static(path.join(__dirname, "firmware_extracted"))
+// );
 
 // Static file serving
 app.use(express.static(path.join(__dirname, "public")));
-app.use("/firmware", express.static(path.join(__dirname, "uploads/firmware")));
+
 app.use("/projects", express.static(path.join(__dirname, "public/projects")));
 
 // Routes
