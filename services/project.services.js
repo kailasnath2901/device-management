@@ -1106,129 +1106,170 @@ class ProjectService {
     return latestAcquisition?.firmwareVersion || "1.0";
   }
 
-async getAcquiredProjects(userId, options) {
-  const { page = 1, limit = 10, deviceId, serialNumber } = options;
-  const offset = (page - 1) * limit;
+  async getAcquiredProjects(userId, options) {
+    const { page = 1, limit = 10, deviceId, serialNumber } = options;
+    const offset = (page - 1) * limit;
 
-  const whereClause = {
-    userId: userId,
-    hasRemovalOccurred: false,
-  };
-
-  // Build device include clause based on filter type
-  const deviceInclude = {
-    model: Device,
-    as: "device",
-    required: false,
-  };
-
-  // Set device attributes based on filter type
-  if (serialNumber) {
-    // When filtering by serial number, return limited device info
-    deviceInclude.attributes = ["id", "deviceName", "serialNumber"];
-    deviceInclude.where = {
-      serialNumber: serialNumber,
+    const whereClause = {
+      userId: userId,
+      hasRemovalOccurred: false,
     };
-    deviceInclude.required = true; // Make it an INNER JOIN when filtering by serial number
-  } else {
-    // When filtering by deviceId or no filter, return full device info
-    deviceInclude.attributes = [
-      "id", 
-      "deviceName", 
-      "serialNumber", 
-      "deviceType", 
-      "firmwareVersion", 
-      "isModified", 
-      "nickName", 
-      "lastUpdated"
-    ];
-    
-    // If filtering by deviceId, add it to the main where clause
-    if (deviceId) {
-      whereClause.deviceId = deviceId;
-    }
-  }
 
-  const { count, rows } = await UserProjectAcquisition.findAndCountAll({
-    where: whereClause,
-    attributes: ["id", "createdAt"],
-    include: [
-      {
-        model: Project,
-        as: "project",
-        attributes: ["id", "name", "description"],
-        include: [
-          {
-            model: ProjectFile,
-            as: "files",
-            attributes: ["id", "filename"],
-            required: false,
-          },
-          {
-            model: ProjectImage,
-            as: "images",
-            attributes: ["id", "filename"],
-            required: false,
-          },
-        ],
-      },
-      deviceInclude,
-    ],
-    limit: limit,
-    offset: offset,
-    order: [["createdAt", "DESC"]],
-    distinct: true,
-    col: "id",
-  });
+    // Build device include clause based on filter type
+    const deviceInclude = {
+      model: Device,
+      as: "device",
+      required: false,
+    };
 
-  // Transform the response to match the expected format
-  const projectsWithImageUrls = rows.map((acquisition) => {
-    const acquisitionData = acquisition.toJSON();
-    
-    // Transform images to the expected format (array of URL strings)
-    let imageUrls = [];
-    if (acquisitionData.project && acquisitionData.project.images) {
-      imageUrls = acquisitionData.project.images.map(
-        (image) => `/projects/${acquisitionData.project.id}/images/${image.filename}`
-      );
+    // Set device attributes based on filter type
+    if (serialNumber) {
+      // When filtering by serial number, return limited device info
+      deviceInclude.attributes = ["id", "deviceName", "serialNumber"];
+      deviceInclude.where = {
+        serialNumber: serialNumber,
+      };
+      deviceInclude.required = true; // Make it an INNER JOIN when filtering by serial number
+    } else {
+      // When filtering by deviceId or no filter, return full device info
+      deviceInclude.attributes = [
+        "id",
+        "deviceName",
+        "serialNumber",
+        "deviceType",
+        "firmwareVersion",
+        "isModified",
+        "nickName",
+      
+      ];
+
+      // If filtering by deviceId, add it to the main where clause
+      if (deviceId) {
+        whereClause.deviceId = deviceId;
+      }
     }
 
-    // Return in the expected format
+    const { count, rows } = await UserProjectAcquisition.findAndCountAll({
+      where: whereClause,
+      attributes: ["id", "createdAt"],
+      include: [
+        {
+          model: Project,
+          as: "project",
+          attributes: [
+            "id",
+            "projectId",
+            "name",
+            "description",
+            "whatItIs",
+            "howItWorks",
+            "priceInInr",
+            "keywordsList",
+            "difficulty",
+            "categoryId",
+            "testAndTroubleshootLink",
+            "versionType",
+            "youtubeLink",
+            "projectType",
+            "maxAcquisitions",
+            "version",
+
+            "dashboard",
+          ],
+          include: [
+            {
+              model: ProjectFile,
+              as: "files",
+              attributes: ["id", "filename"],
+              required: false,
+            },
+            {
+              model: ProjectImage,
+              as: "images",
+              attributes: ["id", "filename"],
+              required: false,
+            },
+          ],
+        },
+        deviceInclude,
+      ],
+      limit: limit,
+      offset: offset,
+      order: [["createdAt", "DESC"]],
+      distinct: true,
+      col: "id",
+    });
+
+    // Transform the response to match the expected format
+    const projectsWithImageUrls = rows.map((acquisition) => {
+      const acquisitionData = acquisition.toJSON();
+
+      // Transform images to the expected format (array of URL strings)
+      let imageUrls = [];
+      if (acquisitionData.project && acquisitionData.project.images) {
+        imageUrls = acquisitionData.project.images.map(
+          (image) =>
+            `/projects/${acquisitionData.project.id}/images/${image.filename}`
+        );
+      }
+
+      // Return in the expected format
+      return {
+        id: acquisitionData.id,
+        project: {
+          id: acquisitionData.project.id,
+          projectId: acquisitionData.project.projectId,
+          name: acquisitionData.project.name,
+          description: acquisitionData.project.description,
+          whatItIs: acquisitionData.project.whatItIs,
+          howItWorks: acquisitionData.project.howItWorks,
+          priceInInr: acquisitionData.project.priceInInr,
+          keywordsList: acquisitionData.project.keywordsList,
+          difficulty: acquisitionData.project.difficulty,
+          categoryId: acquisitionData.project.categoryId,
+          testAndTroubleshootLink:
+            acquisitionData.project.testAndTroubleshootLink,
+          versionType: acquisitionData.project.versionType,
+          youtubeLink: acquisitionData.project.youtubeLink,
+          projectType: acquisitionData.project.projectType,
+          maxAcquisitions: acquisitionData.project.maxAcquisitions,
+          version: acquisitionData.project.version,
+
+          dashboard: acquisitionData.project.dashboard,
+
+          files: acquisitionData.project.files || [],
+          images: imageUrls, // Array of URL strings
+        },
+        device: acquisitionData.device
+          ? serialNumber
+            ? {
+                // Limited device info when filtering by serial number
+                id: acquisitionData.device.id,
+                deviceName: acquisitionData.device.deviceName,
+                serialNumber: acquisitionData.device.serialNumber,
+              }
+            : {
+                // Full device info when filtering by deviceId or no filter
+                id: acquisitionData.device.id,
+                deviceName: acquisitionData.device.deviceName,
+                serialNumber: acquisitionData.device.serialNumber,
+                deviceType: acquisitionData.device.deviceType,
+                firmwareVersion: acquisitionData.device.firmwareVersion,
+                isModified: acquisitionData.device.isModified,
+                nickName: acquisitionData.device.nickName,
+                lastUpdated: acquisitionData.device.lastUpdated,
+              }
+          : null,
+      };
+    });
+
     return {
-      id: acquisitionData.id,
-      project: {
-        id: acquisitionData.project.id,
-        name: acquisitionData.project.name,
-        files: acquisitionData.project.files || [],
-        images: imageUrls, // Array of URL strings
-      },
-      device: acquisitionData.device ? (serialNumber ? {
-        // Limited device info when filtering by serial number
-        id: acquisitionData.device.id,
-        deviceName: acquisitionData.device.deviceName,
-        serialNumber: acquisitionData.device.serialNumber,
-      } : {
-        // Full device info when filtering by deviceId or no filter
-        id: acquisitionData.device.id,
-        deviceName: acquisitionData.device.deviceName,
-        serialNumber: acquisitionData.device.serialNumber,
-        deviceType: acquisitionData.device.deviceType,
-        firmwareVersion: acquisitionData.device.firmwareVersion,
-        isModified: acquisitionData.device.isModified,
-        nickName: acquisitionData.device.nickName,
-        lastUpdated: acquisitionData.device.lastUpdated,
-      }) : null,
+      projects: projectsWithImageUrls,
+      totalProjectsAcquired: count,
+      currentPage: page,
+      totalPages: Math.ceil(count / limit),
     };
-  });
-
-  return {
-    projects: projectsWithImageUrls,
-    totalProjectsAcquired: count,
-    currentPage: page,
-    totalPages: Math.ceil(count / limit),
-  };
-}
-
+  }
 
   async removeAcquiredProject(userId, projectId, deviceId) {
     const acquisition = await UserProjectAcquisition.findOne({
