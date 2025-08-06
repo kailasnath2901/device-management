@@ -72,11 +72,6 @@ const uploadFirmware = async (req, res) => {
       allFiles.push(req.file);
     }
 
-    // Enhanced debugging
-    console.log("Files processing result:");
-    console.log("- req.files type:", typeof req.files);
-    console.log("- req.files is array:", Array.isArray(req.files));
-    console.log("- allFiles length:", allFiles.length);
 
     if (allFiles.length === 0) {
       return res.status(400).json({
@@ -251,6 +246,7 @@ const getAllFirmware = async (req, res) => {
   }
 };
 
+
 // Updated listExtractedFiles function
 const listExtractedFiles = async (req, res) => {
   try {
@@ -280,9 +276,9 @@ const listExtractedFiles = async (req, res) => {
         .json({ success: false, message: "Extract path not found" });
     }
 
-    // Function to recursively get all files
-    const getAllFiles = (dirPath, basePath = "") => {
-      const files = [];
+    // Function to recursively get all file paths as strings
+    const getAllFilePaths = (dirPath, basePath = "") => {
+      const filePaths = [];
       const items = fs.readdirSync(dirPath);
 
       items.forEach((item) => {
@@ -291,41 +287,28 @@ const listExtractedFiles = async (req, res) => {
         const stats = fs.statSync(itemPath);
 
         if (stats.isDirectory()) {
-          files.push({
-            name: item,
-            path: relativePath,
-            type: "directory",
-            size: null,
-            children: getAllFiles(itemPath, relativePath),
-          });
+          // Recursively get files from subdirectories
+          const subFiles = getAllFilePaths(itemPath, relativePath);
+          filePaths.push(...subFiles);
         } else {
-          files.push({
-            name: item,
-            path: relativePath,
-            type: "file",
-            size: stats.size,
-            // Updated: Only API download URL (requires authentication)
-            downloadUrl: `/api/firmware/download/${id}?file=${encodeURIComponent(
-              relativePath
-            )}`,
-          });
+          // Add file path to the list
+          filePaths.push(relativePath);
         }
       });
 
-      return files;
+      return filePaths;
     };
 
-    const fileList = getAllFiles(extractPath);
+    const fileList = getAllFilePaths(extractPath);
 
     return res.status(200).json({
       success: true,
       data: {
         firmwareId: firmware.id,
         version: firmware.version,
-        extractPath: firmware.extractPath,
         files: fileList,
-        downloadAllUrl: `/api/firmware/download/${id}`, // Download all files as ZIP (requires auth)
-        message: "All file downloads require authentication",
+        downloadAllUrl: `/api/firmware/download/${id}`,
+    
       },
     });
   } catch (error) {
@@ -798,6 +781,148 @@ const setLatestFirmware = async (req, res) => {
   }
 };
 
+
+const deleteFirmware = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+
+    const firmware = await Firmware.findOne({
+      where: { id },
+      paranoid: false // This includes soft-deleted records
+    });
+
+    if (!firmware) {
+      return res.status(404).json({
+        success: false,
+        message: "Firmware not found"
+      });
+    }
+
+    console.log(`Starting deletion process for firmware ID: ${id}, Version: ${firmware.version}`);
+
+    let filesDeleted = [];
+    let deletionErrors = [];
+
+    // Delete original file if it exists
+    if (firmware.filePath && fs.existsSync(firmware.filePath)) {
+      try {
+        fs.unlinkSync(firmware.filePath);
+        filesDeleted.push(firmware.filePath);
+        console.log(`Deleted original file: ${firmware.filePath}`);
+      } catch (error) {
+        console.error(`Error deleting original file ${firmware.filePath}:`, error);
+        deletionErrors.push({
+          file: firmware.filePath,
+          error: error.message
+        });
+      }
+    }
+
+    // Delete extracted folder and all its contents if it exists
+    if (firmware.extractPath && fs.existsSync(firmware.extractPath)) {
+      try {
+        // Recursively delete the entire extracted directory
+        const deleteDirectory = (dirPath) => {
+          const items = fs.readdirSync(dirPath);
+          
+          items.forEach(item => {
+            const itemPath = path.join(dirPath, item);
+            const stats = fs.statSync(itemPath);
+            
+            if (stats.isDirectory()) {
+              deleteDirectory(itemPath); // Recursive call for subdirectories
+            } else {
+              fs.unlinkSync(itemPath); // Delete file
+              filesDeleted.push(itemPath);
+            }
+          });
+          
+          fs.rmdirSync(dirPath); // Delete the empty directory
+        };
+
+        deleteDirectory(firmware.extractPath);
+        filesDeleted.push(firmware.extractPath + " (directory)");
+        console.log(`Deleted extracted directory: ${firmware.extractPath}`);
+      } catch (error) {
+        console.error(`Error deleting extracted directory ${firmware.extractPath}:`, error);
+        deletionErrors.push({
+          file: firmware.extractPath,
+          error: error.message
+        });
+      }
+    }
+
+    // If this firmware was marked as latest, we might want to set another version as latest
+    let newLatestSet = false;
+    if (firmware.isLatest) {
+      try {
+        // Find the next most recent firmware of the same device type to set as latest
+        const nextLatest = await Firmware.findOne({
+          where: {
+            id: { [Op.ne]: firmware.id }, // Exclude current firmware
+            deletedAt: null,
+            ...(firmware.deviceType && { deviceType: firmware.deviceType })
+          },
+          order: [['uploadedAt', 'DESC']],
+          paranoid: true // Only non-deleted records
+        });
+
+        if (nextLatest) {
+          await nextLatest.update({ isLatest: true });
+          newLatestSet = {
+            id: nextLatest.id,
+            version: nextLatest.version,
+            fileName: nextLatest.fileName
+          };
+          console.log(`Set new latest firmware: ${nextLatest.version}`);
+        }
+      } catch (error) {
+        console.error("Error setting new latest firmware:", error);
+        deletionErrors.push({
+          operation: "setting new latest firmware",
+          error: error.message
+        });
+      }
+    }
+
+    // Permanently delete the firmware record from database (hard delete)
+    await firmware.destroy({ force: true }); // force: true ensures hard delete even with paranoid mode
+
+    console.log(`Successfully deleted firmware record from database: ${firmware.version}`);
+
+    return res.status(200).json({
+      success: true,
+      message: "Firmware deleted successfully",
+      data: {
+        deletedFirmware: {
+          id: firmware.id,
+          version: firmware.version,
+          fileName: firmware.fileName,
+          deviceType: firmware.deviceType
+        },
+        filesDeleted: filesDeleted,
+        deletionErrors: deletionErrors.length > 0 ? deletionErrors : null,
+        newLatestFirmware: newLatestSet || null,
+        summary: {
+          totalFilesDeleted: filesDeleted.length,
+          hasErrors: deletionErrors.length > 0,
+          wasLatest: firmware.isLatest,
+          newLatestSet: !!newLatestSet
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("Error deleting firmware:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error deleting firmware",
+      error: error.message
+    });
+  }
+};
+
 // Export all functions properly
 module.exports = {
   uploadFirmware,
@@ -811,4 +936,5 @@ module.exports = {
   listExtractedFiles,
   getFirmwareByVersion,
   setLatestFirmware,
+  deleteFirmware
 };

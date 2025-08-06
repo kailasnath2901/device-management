@@ -982,7 +982,7 @@ class ProjectController {
   async getAcquiredProjects(req, res) {
     try {
       const userId = req.user.id;
-      const { page = 1, limit = 10, deviceId } = req.query;
+      const { page = 1, limit = 10, deviceId, serialNumber } = req.query;
 
       // Validate deviceId if provided
       if (deviceId && isNaN(parseInt(deviceId))) {
@@ -992,10 +992,19 @@ class ProjectController {
         });
       }
 
+      // Validate that only one filter is provided at a time
+      if (deviceId && serialNumber) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide either deviceId or serialNumber, not both",
+        });
+      }
+
       const result = await ProjectService.getAcquiredProjects(userId, {
         page: parseInt(page),
         limit: parseInt(limit),
         deviceId: deviceId ? parseInt(deviceId) : null,
+        serialNumber: serialNumber || null,
       });
 
       res.json({
@@ -1004,8 +1013,9 @@ class ProjectController {
         totalAcquiredProjects: result.totalProjectsAcquired,
         currentPage: result.currentPage,
         totalPages: result.totalPages,
-        filteredByDevice: !!deviceId,
+        filteredByDevice: !!(deviceId || serialNumber),
         deviceId: deviceId ? parseInt(deviceId) : null,
+        serialNumber: serialNumber || null,
       });
     } catch (error) {
       console.error("Get Acquired Projects Error:", error);

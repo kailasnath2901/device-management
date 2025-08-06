@@ -1107,7 +1107,7 @@ class ProjectService {
   }
 
   async getAcquiredProjects(userId, options) {
-    const { page = 1, limit = 10, deviceId } = options;
+    const { page = 1, limit = 10, deviceId, serialNumber } = options;
     const offset = (page - 1) * limit;
 
     const whereClause = {
@@ -1115,38 +1115,51 @@ class ProjectService {
       hasRemovalOccurred: false,
     };
 
+    // Build device include clause
+    const deviceInclude = {
+      model: Device,
+      as: "device",
+      attributes: ["id", "deviceName", "serialNumber"],
+      required: false,
+    };
+
+    // If filtering by deviceId, add it to the main where clause
     if (deviceId) {
       whereClause.deviceId = deviceId;
     }
 
+    // If filtering by serialNumber, we need to join and filter by device serial number
+    if (serialNumber) {
+      deviceInclude.where = {
+        serialNumber: serialNumber,
+      };
+      deviceInclude.required = true; // Make it an INNER JOIN when filtering by serial number
+    }
+
     const { count, rows } = await UserProjectAcquisition.findAndCountAll({
       where: whereClause,
-      attributes: ["id", "createdAt"], // Only get acquisition ID and creation date
+      attributes: ["id", "createdAt"],
       include: [
         {
           model: Project,
           as: "project",
-          attributes: ["id", "name", "description"], // Only project id, name, and description
+          attributes: ["id", "name", "description"],
           include: [
             {
               model: ProjectFile,
               as: "files",
-              attributes: ["id", "filename"], // Only file id and filename
+              attributes: ["id", "filename"],
               required: false,
             },
             {
               model: ProjectImage,
               as: "images",
-              attributes: ["id", "filename"], // Remove publicUrl from here
+              attributes: ["id", "filename"],
               required: false,
             },
           ],
         },
-        {
-          model: Device,
-          as: "device",
-          attributes: ["id", "deviceName", "serialNumber"], // Only device id, name, and serial number
-        },
+        deviceInclude,
       ],
       limit: limit,
       offset: offset,
@@ -1155,18 +1168,36 @@ class ProjectService {
       col: "id",
     });
 
-    // Add public URLs for images (generate them dynamically)
+    // Transform the response to match the expected format
     const projectsWithImageUrls = rows.map((acquisition) => {
       const acquisitionData = acquisition.toJSON();
+
+      // Transform images to the expected format (array of URL strings)
+      let imageUrls = [];
       if (acquisitionData.project && acquisitionData.project.images) {
-        acquisitionData.project.images = acquisitionData.project.images.map(
-          (image) => ({
-            ...image,
-            publicUrl: `/projects/${acquisitionData.project.id}/images/${image.filename}`,
-          })
+        imageUrls = acquisitionData.project.images.map(
+          (image) =>
+            `/projects/${acquisitionData.project.id}/images/${image.filename}`
         );
       }
-      return acquisitionData;
+
+      // Return in the expected format
+      return {
+        id: acquisitionData.id,
+        project: {
+          id: acquisitionData.project.id,
+          name: acquisitionData.project.name,
+          files: acquisitionData.project.files || [],
+          images: imageUrls, // Array of URL strings
+        },
+        device: acquisitionData.device
+          ? {
+              id: acquisitionData.device.id,
+              deviceName: acquisitionData.device.deviceName,
+              serialNumber: acquisitionData.device.serialNumber,
+            }
+          : null,
+      };
     });
 
     return {
@@ -1176,6 +1207,7 @@ class ProjectService {
       totalPages: Math.ceil(count / limit),
     };
   }
+
   async removeAcquiredProject(userId, projectId, deviceId) {
     const acquisition = await UserProjectAcquisition.findOne({
       where: {

@@ -2,12 +2,12 @@ const express = require("express");
 const router = express.Router();
 const firmwareController = require("../controllers/file-firmware.controller");
 const { upload, handleMulterError } = require("../middleware/firmwareUpload");
-const { authenticate } = require("../middleware/auth");
+const { authenticate, authorizeRoles } = require("../middleware/auth");
 
 // Upload firmware (restricted to admins)
 router.post(
   "/upload",
-  authenticate,
+  authorizeRoles("admin", "super_admin"),
   upload.fields([
     { name: "firmware", maxCount: 5 },
     { name: "documentation", maxCount: 3 },
@@ -17,7 +17,7 @@ router.post(
 );
 
 // Get all firmware versions
-router.get("/getFirmware", firmwareController.getAllFirmware);
+router.get("/getFirmware", authenticate, firmwareController.getAllFirmware);
 
 // Get latest firmware version
 router.get("/latest", firmwareController.getLatestFirmware);
@@ -52,6 +52,12 @@ router.put(
   "/update-flag/set-all-latest",
   authenticate,
   firmwareController.setAllLatestFirmwareUpdateAvailable
+);
+
+router.delete(
+  "/delete/:id",
+  authorizeRoles("admin", "super_admin"),
+  firmwareController.deleteFirmware
 );
 
 module.exports = router;
