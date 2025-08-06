@@ -1140,7 +1140,7 @@ class ProjectService {
         "firmwareVersion",
         "isModified",
         "nickName",
-      
+        "lastUpdated",
       ];
 
       // If filtering by deviceId, add it to the main where clause
@@ -1156,26 +1156,32 @@ class ProjectService {
         {
           model: Project,
           as: "project",
-          attributes: [
-            "id",
-            "projectId",
-            "name",
-            "description",
-            "whatItIs",
-            "howItWorks",
-            "priceInInr",
-            "keywordsList",
-            "difficulty",
-            "categoryId",
-            "testAndTroubleshootLink",
-            "versionType",
-            "youtubeLink",
-            "projectType",
-            "maxAcquisitions",
-            "version",
-
-            "dashboard",
-          ],
+          attributes: serialNumber
+            ? // Limited project attributes when filtering by serial number
+              ["id", "name"]
+            : // Full project attributes when filtering by deviceId or no filter
+              [
+                "id",
+                "projectId",
+                "name",
+                "description",
+                "whatItIs",
+                "howItWorks",
+                "priceInInr",
+                "keywordsList",
+                "difficulty",
+                "categoryId",
+                "testAndTroubleshootLink",
+                "versionType",
+                "youtubeLink",
+                "projectType",
+                "maxAcquisitions",
+                "version",
+                "lastUpdated",
+                "dashboard",
+                "createdAt",
+                "updatedAt",
+              ],
           include: [
             {
               model: ProjectFile,
@@ -1216,30 +1222,40 @@ class ProjectService {
       // Return in the expected format
       return {
         id: acquisitionData.id,
-        project: {
-          id: acquisitionData.project.id,
-          projectId: acquisitionData.project.projectId,
-          name: acquisitionData.project.name,
-          description: acquisitionData.project.description,
-          whatItIs: acquisitionData.project.whatItIs,
-          howItWorks: acquisitionData.project.howItWorks,
-          priceInInr: acquisitionData.project.priceInInr,
-          keywordsList: acquisitionData.project.keywordsList,
-          difficulty: acquisitionData.project.difficulty,
-          categoryId: acquisitionData.project.categoryId,
-          testAndTroubleshootLink:
-            acquisitionData.project.testAndTroubleshootLink,
-          versionType: acquisitionData.project.versionType,
-          youtubeLink: acquisitionData.project.youtubeLink,
-          projectType: acquisitionData.project.projectType,
-          maxAcquisitions: acquisitionData.project.maxAcquisitions,
-          version: acquisitionData.project.version,
-
-          dashboard: acquisitionData.project.dashboard,
-
-          files: acquisitionData.project.files || [],
-          images: imageUrls, // Array of URL strings
-        },
+        project: serialNumber
+          ? {
+              // Limited project info when filtering by serial number
+              id: acquisitionData.project.id,
+              name: acquisitionData.project.name,
+              files: acquisitionData.project.files || [],
+              images: imageUrls,
+            }
+          : {
+              // Full project info when filtering by deviceId or no filter
+              id: acquisitionData.project.id,
+              projectId: acquisitionData.project.projectId,
+              name: acquisitionData.project.name,
+              description: acquisitionData.project.description,
+              whatItIs: acquisitionData.project.whatItIs,
+              howItWorks: acquisitionData.project.howItWorks,
+              priceInInr: acquisitionData.project.priceInInr,
+              keywordsList: acquisitionData.project.keywordsList,
+              difficulty: acquisitionData.project.difficulty,
+              categoryId: acquisitionData.project.categoryId,
+              testAndTroubleshootLink:
+                acquisitionData.project.testAndTroubleshootLink,
+              versionType: acquisitionData.project.versionType,
+              youtubeLink: acquisitionData.project.youtubeLink,
+              projectType: acquisitionData.project.projectType,
+              maxAcquisitions: acquisitionData.project.maxAcquisitions,
+              version: acquisitionData.project.version,
+              lastUpdated: acquisitionData.project.lastUpdated,
+              dashboard: acquisitionData.project.dashboard,
+              createdAt: acquisitionData.project.createdAt,
+              updatedAt: acquisitionData.project.updatedAt,
+              files: acquisitionData.project.files || [],
+              images: imageUrls,
+            },
         device: acquisitionData.device
           ? serialNumber
             ? {
