@@ -7,6 +7,7 @@ const { authenticate, authorizeRoles } = require("../middleware/auth");
 // Upload firmware (restricted to admins)
 router.post(
   "/upload",
+  authenticate,
   authorizeRoles("admin", "super_admin"),
   upload.fields([
     { name: "firmware", maxCount: 5 },
@@ -56,6 +57,7 @@ router.put(
 
 router.delete(
   "/delete/:id",
+  authenticate,
   authorizeRoles("admin", "super_admin"),
   firmwareController.deleteFirmware
 );
