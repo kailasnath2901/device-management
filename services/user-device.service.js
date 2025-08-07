@@ -287,11 +287,10 @@ class DeviceService {
         throw new Error("Device not found");
       }
 
-      // Check if device has any active project acquisitions
-      const activeAcquisitions = await UserProjectAcquisition.findAll({
+      // Get all acquisitions for reporting purposes (optional)
+      const allAcquisitions = await UserProjectAcquisition.findAll({
         where: {
           deviceId: deviceId,
-          hasRemovalOccurred: false,
         },
         include: [
           {
@@ -308,52 +307,16 @@ class DeviceService {
         transaction,
       });
 
-      if (activeAcquisitions.length > 0) {
-        // Format the active acquisitions for better error message
-        const acquisitionDetails = activeAcquisitions.map((acq) => ({
-          projectName: acq.project.name,
-          userName: acq.user.username,
-          userEmail: acq.user.email,
-          acquisitionId: acq.id,
-        }));
-
-        // Create error with details but don't rollback here
-        const error = new Error(
-          "Cannot delete device: It has active project acquisitions"
-        );
-        error.code = "DEVICE_HAS_ACTIVE_ACQUISITIONS";
-        error.details = {
-          deviceId: deviceId,
-          deviceName: device.deviceName,
-          activeAcquisitionsCount: activeAcquisitions.length,
-          acquisitions: acquisitionDetails,
-        };
-        // Just throw the error, let the catch block handle rollback
-        throw error;
-      }
-
-      // Check for any historical acquisitions (where hasRemovalOccurred is true)
-      const historicalAcquisitions = await UserProjectAcquisition.findAll({
+      // Force delete ALL acquisitions (both active and removed)
+      await UserProjectAcquisition.destroy({
         where: {
           deviceId: deviceId,
-          hasRemovalOccurred: true,
         },
+        force: true, // Hard delete - bypasses soft delete
         transaction,
       });
 
-      // Delete all historical acquisitions first
-      if (historicalAcquisitions.length > 0) {
-        await UserProjectAcquisition.destroy({
-          where: {
-            deviceId: deviceId,
-            hasRemovalOccurred: true,
-          },
-          force: true, // Hard delete
-          transaction,
-        });
-      }
-
-      // Now delete the device
+      // Delete the device
       await device.destroy({ transaction });
 
       await transaction.commit();
@@ -364,8 +327,17 @@ class DeviceService {
           id: device.id,
           deviceName: device.deviceName,
           serialNumber: device.serialNumber,
+          deviceType: device.deviceType,
+          userId: device.userId,
         },
-        cleanedUpAcquisitions: historicalAcquisitions.length,
+        deletedAcquisitions: {
+          total: allAcquisitions.length,
+          active: allAcquisitions.filter((acq) => !acq.hasRemovalOccurred)
+            .length,
+          removed: allAcquisitions.filter((acq) => acq.hasRemovalOccurred)
+            .length,
+        },
+        message: `Device deleted along with ${allAcquisitions.length} project acquisitions`,
       };
     } catch (error) {
       // Only rollback if transaction is still active

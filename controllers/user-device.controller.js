@@ -263,24 +263,11 @@ class DeviceController {
 
       res.json({
         success: true,
-        message: "Device deleted successfully",
+        message: "Device and all associated data deleted successfully",
         data: result,
       });
     } catch (error) {
       console.error("Delete device error:", error);
-
-      // Handle specific error for active acquisitions
-      if (error.code === "DEVICE_HAS_ACTIVE_ACQUISITIONS") {
-        return res.status(400).json({
-          success: false,
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          suggestion:
-            "Please ensure all users remove their project acquisitions from this device before deletion, or use force delete option.",
-        });
-      }
-
       res.status(400).json({
         success: false,
         message: error.message,
