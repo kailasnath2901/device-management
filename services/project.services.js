@@ -872,19 +872,19 @@ class ProjectService {
         model: ProjectFile,
         as: "files",
         required: false,
-        where: { deletedAt: null }, // Use camelCase
+      
       },
       {
         model: ProjectImage,
         as: "images",
         required: false,
-        where: { deletedAt: null }, // Use camelCase
+       
       },
       {
         model: Category,
         as: "category",
         attributes: ["id", "name"],
-        where: { deletedAt: null }, // Use camelCase
+    
       },
       {
         model: Component,
@@ -893,7 +893,7 @@ class ProjectService {
         through: {
           attributes: ["quantity"],
         },
-        where: { deletedAt: null }, // Use camelCase
+       
         required: false, // Set to false by default
       },
     ];
