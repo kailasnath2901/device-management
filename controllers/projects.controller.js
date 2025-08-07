@@ -619,7 +619,6 @@ class ProjectController {
 
       // Update fields if provided
       if (req.body.name) updateData.name = req.body.name;
-      if (req.body.projectId) updateData.projectId = req.body.projectId;
       if (req.body.description !== undefined)
         updateData.description = req.body.description;
       if (req.body.keywords !== undefined) {
@@ -725,54 +724,73 @@ class ProjectController {
     }
   }
 
-  async searchProjects(req, res) {
-    console.log("Search query parameters:", req.query);
-    console.log("Request path:", req.path);
-    try {
-      const {
+async searchProjects(req, res) {
+  console.log("Search query parameters:", req.query);
+  console.log("Request path:", req.path);
+  console.log("Request URL:", req.url);
+  
+  try {
+    const {
+      keyword,
+      componentId,
+      projectName,
+      project_id, // Note: using project_id to match your query parameter
+      projectId,  // Also accept projectId for flexibility
+      categoryId,
+      difficulty,
+      projectType,
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    // Handle both project_id and projectId parameter names
+    const searchProjectId = project_id || projectId;
+
+    console.log("Parsed parameters:", {
+      keyword,
+      componentId,
+      projectName,
+      searchProjectId,
+      categoryId,
+      difficulty,
+      projectType,
+      page,
+      limit
+    });
+
+    // Use the service layer
+    const result = await ProjectService.searchProjects(
+      {
         keyword,
         componentId,
         projectName,
-        projectId, // This now searches the custom projectId field
+        projectId: searchProjectId, // Pass the resolved project ID
         categoryId,
         difficulty,
         projectType,
-        page = 1,
-        limit = 10,
-      } = req.query;
+      },
+      { page, limit }
+    );
 
-      // Use the service layer
-      const result = await ProjectService.searchProjects(
-        {
-          keyword,
-          componentId,
-          projectName,
-          projectId, // Custom projectId search
-          categoryId,
-          difficulty,
-          projectType,
-        },
-        { page, limit }
-      );
-
-      return res.status(200).json({
-        success: true,
-        projects: result.projects,
-        pagination: {
-          currentPage: result.currentPage,
-          totalPages: result.totalPages,
-          totalProjects: result.totalProjects,
-          limit: parseInt(limit),
-        },
-      });
-    } catch (error) {
-      console.error("Error searching projects:", error);
-      return res.status(500).json({
-        success: false,
-        message: error.message,
-      });
-    }
+    return res.status(200).json({
+      success: true,
+      projects: result.projects,
+      pagination: {
+        currentPage: result.currentPage,
+        totalPages: result.totalPages,
+        totalProjects: result.totalProjects,
+        limit: parseInt(limit),
+      },
+    });
+  } catch (error) {
+    console.error("Error searching projects:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    });
   }
+}
 
   async getUserProjects(req, res) {
     try {

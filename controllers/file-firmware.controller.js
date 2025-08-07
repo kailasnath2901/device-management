@@ -308,7 +308,7 @@ const listExtractedFiles = async (req, res) => {
         version: firmware.version,
         files: fileList,
         downloadAllUrl: `/api/firmware/download/${id}`,
-    
+
       },
     });
   } catch (error) {
@@ -442,9 +442,8 @@ const downloadFirmware = async (req, res) => {
         addDirectoryToZip(extractPath);
 
         const zipBuffer = zip.toBuffer();
-        const fileName = `${firmware.fileName.replace(".zip", "")}_v${
-          firmware.version
-        }.zip`;
+        const fileName = `${firmware.fileName.replace(".zip", "")}_v${firmware.version
+          }.zip`;
 
         res.set({
           "Content-Type": "application/zip",
@@ -576,40 +575,75 @@ const previewFirmware = async (req, res) => {
   }
 };
 
-// Set firmware update available flag
 const setFirmwareUpdateAvailable = async (req, res) => {
   try {
-    const { version, deviceType } = req.body;
+    const { version, deviceType, id } = req.body;
 
-    if (!version) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Version is required" });
+    // Validate input - either id or version should be provided
+    if (!version && !id) {
+      return res.status(400).json({
+        success: false,
+        message: "Either version or id is required"
+      });
     }
 
-    const whereClause = { version, deletedAt: null };
-    if (deviceType) {
-      whereClause.deviceType = deviceType;
+    let whereClause = { deletedAt: null };
+
+    // If ID is provided, use it (more specific)
+    if (id) {
+      whereClause.id = id;
+    } else {
+      // If only version is provided, use version and optionally deviceType
+      whereClause.version = version;
+      if (deviceType) {
+        whereClause.deviceType = deviceType;
+      }
     }
 
-    const [updatedCount] = await Firmware.update(
-      { firmwareUpdateAvailable: true },
-      { where: whereClause }
-    );
+    console.log('Updating firmware with whereClause:', whereClause);
 
-    if (updatedCount === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "No firmware found to update" });
-    }
+    // Use a transaction to ensure data consistency
+    const result = await Firmware.sequelize.transaction(async (t) => {
+      const [updatedCount] = await Firmware.update(
+        { firmwareUpdateAvailable: true },
+        {
+          where: whereClause,
+          transaction: t
+        }
+      );
+
+      if (updatedCount === 0) {
+        throw new Error('No firmware found to update');
+      }
+
+      // Get the updated firmware records to return
+      const updatedFirmware = await Firmware.findAll({
+        where: whereClause,
+        attributes: ['id', 'version', 'deviceType', 'firmwareUpdateAvailable'],
+        transaction: t
+      });
+
+      return { updatedCount, updatedFirmware };
+    });
+
+    console.log(`Successfully updated ${result.updatedCount} firmware(s)`);
 
     return res.status(200).json({
       success: true,
-      message: `Firmware update flag set for ${updatedCount} firmware(s)`,
-      data: { version, deviceType, firmwareUpdateAvailable: true },
+      message: `Firmware update flag set for ${result.updatedCount} firmware(s)`,
+      data: result.updatedFirmware
     });
+
   } catch (error) {
     console.error("Error setting firmware update flag:", error);
+
+    if (error.message === 'No firmware found to update') {
+      return res.status(404).json({
+        success: false,
+        message: "No firmware found to update"
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: "Error setting firmware update flag",
@@ -825,11 +859,11 @@ const deleteFirmware = async (req, res) => {
         // Recursively delete the entire extracted directory
         const deleteDirectory = (dirPath) => {
           const items = fs.readdirSync(dirPath);
-          
+
           items.forEach(item => {
             const itemPath = path.join(dirPath, item);
             const stats = fs.statSync(itemPath);
-            
+
             if (stats.isDirectory()) {
               deleteDirectory(itemPath); // Recursive call for subdirectories
             } else {
@@ -837,7 +871,7 @@ const deleteFirmware = async (req, res) => {
               filesDeleted.push(itemPath);
             }
           });
-          
+
           fs.rmdirSync(dirPath); // Delete the empty directory
         };
 
