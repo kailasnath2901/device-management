@@ -697,35 +697,8 @@ class ProjectService {
       // Return the updated project with publicUrls
       return await this.getProjectById(projectId);
     } catch (error) {
-      console.error("Error updating project:", error);
-
-      // Handle validation errors specifically
-      if (error.name === 'SequelizeValidationError') {
-        const validationErrors = error.errors.map(err => ({
-          field: err.path,
-          message: err.message
-        }));
-
-        return res.status(400).json({
-          success: false,
-          message: "Validation error",
-          validationErrors: validationErrors
-        });
-      }
-
-      // Handle unique constraint violations
-      if (error.name === 'SequelizeUniqueConstraintError') {
-        return res.status(400).json({
-          success: false,
-          message: "Project ID already exists. Please choose a different one.",
-          field: error.errors[0]?.path
-        });
-      }
-
-      return res.status(500).json({
-        success: false,
-        message: error.message,
-      });
+      await transaction.rollback();
+      throw error;
     }
   }
 
@@ -857,13 +830,10 @@ class ProjectService {
       difficulty,
       projectType,
     } = searchParams;
-
     const offset = (page - 1) * limit;
 
-    console.log("Service received parameters:", searchParams);
-
     let whereCondition = {
-     
+      deleted_at: null, // Explicitly filter out soft-deleted projects
       versionType: "release", // Only show release version projects
     };
 
@@ -872,19 +842,19 @@ class ProjectService {
         model: ProjectFile,
         as: "files",
         required: false,
-      
+        where: { deleted_at: null },
       },
       {
         model: ProjectImage,
         as: "images",
         required: false,
-       
+        where: { deleted_at: null },
       },
       {
         model: Category,
         as: "category",
         attributes: ["id", "name"],
-    
+        where: { deleted_at: null },
       },
       {
         model: Component,
@@ -893,72 +863,66 @@ class ProjectService {
         through: {
           attributes: ["quantity"],
         },
-       
-        required: false, // Set to false by default
+        where: { deleted_at: null },
       },
     ];
 
     // Search by custom projectId (not the primary key id)
     if (projectId) {
-      console.log("Searching for projectId:", projectId);
       whereCondition.projectId = {
-        [Op.like]: `%${projectId.trim()}%`, // Trim whitespace
+        [Op.like]: `%${projectId}%`,
       };
     }
 
     // Search by project name
     if (projectName) {
       whereCondition.name = {
-        [Op.like]: `%${projectName.trim()}%`,
+        [Op.like]: `%${projectName}%`,
       };
     }
 
     // Search by category
     if (categoryId) {
-      whereCondition.categoryId = parseInt(categoryId); // Use camelCase
+      whereCondition.category_id = categoryId;
     }
 
     // Search by difficulty
     if (difficulty) {
-      whereCondition.difficulty = difficulty.toLowerCase().trim();
+      whereCondition.difficulty = difficulty;
     }
 
     // Search by project type
     if (projectType) {
-      whereCondition.projectType = projectType.toLowerCase().trim(); // Use camelCase
+      whereCondition.project_type = projectType;
     }
 
-    // Search by keywords - Fixed version
+    // Search by keywords - Final working version
     if (keyword) {
-      const trimmedKeyword = keyword.trim();
-      console.log("Searching for keyword:", trimmedKeyword);
-
       whereCondition[Op.or] = [
-        { name: { [Op.like]: `%${trimmedKeyword}%` } },
-        { description: { [Op.like]: `%${trimmedKeyword}%` } },
-        { projectId: { [Op.like]: `%${trimmedKeyword}%` } },
-        { whatItIs: { [Op.like]: `%${trimmedKeyword}%` } }, // Use camelCase
-        { howItWorks: { [Op.like]: `%${trimmedKeyword}%` } }, // Use camelCase
-
-        // For JSON search in keywordsList
-        sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(keywords_list, '$[*]')) LIKE '%${trimmedKeyword}%'`),
+        // Use model attribute names (not table column names)
+        { name: { [Op.like]: `%${keyword}%` } },
+        { description: { [Op.like]: `%${keyword}%` } },
+        { projectId: { [Op.like]: `%${keyword}%` } }, // Also search in custom projectId
+        // For JSON search in MySQL
+        sequelize.literal(`JSON_CONTAINS(keywords_list, '"${keyword}"')`),
+        // Use field mappings for underscored columns
+        sequelize.where(sequelize.col("what_it_is"), {
+          [Op.like]: `%${keyword}%`,
+        }),
+        sequelize.where(sequelize.col("how_it_works"), {
+          [Op.like]: `%${keyword}%`,
+        }),
       ];
     }
 
     // Search by component
     if (componentId) {
-      // Update the components include condition
-      const componentIndex = includeConditions.findIndex(inc => inc.as === "components");
-      if (componentIndex !== -1) {
-        includeConditions[componentIndex].where = {
-          ...includeConditions[componentIndex].where,
-          id: parseInt(componentId),
-        };
-        includeConditions[componentIndex].required = true;
-      }
+      includeConditions[3].where = {
+        ...includeConditions[3].where,
+        id: componentId,
+      };
+      includeConditions[3].required = true;
     }
-
-    console.log("Final where condition:", JSON.stringify(whereCondition, null, 2));
 
     try {
       const { count, rows } = await Project.findAndCountAll({
@@ -966,12 +930,9 @@ class ProjectService {
         include: includeConditions,
         limit: parseInt(limit, 10),
         offset: parseInt(offset, 10),
-        order: [["createdAt", "DESC"]], // Use camelCase
+        order: [["created_at", "DESC"]],
         distinct: true,
-        logging: console.log, // Enable SQL logging for debugging
       });
-
-      console.log(`Found ${count} projects matching search criteria`);
 
       const projectsWithImageUrls = rows.map((project) => {
         const projectData = project.toJSON();
@@ -991,8 +952,6 @@ class ProjectService {
       console.error("Search error:", {
         message: error.message,
         sql: error.sql,
-        parameters: searchParams,
-        whereCondition: whereCondition,
         stack: error.stack,
       });
       throw error;
@@ -1199,30 +1158,30 @@ class ProjectService {
           as: "project",
           attributes: serialNumber
             ? // Limited project attributes when filtering by serial number
-            ["id", "name"]
+              ["id", "name"]
             : // Full project attributes when filtering by deviceId or no filter
-            [
-              "id",
-              "projectId",
-              "name",
-              "description",
-              "whatItIs",
-              "howItWorks",
-              "priceInInr",
-              "keywordsList",
-              "difficulty",
-              "categoryId",
-              "testAndTroubleshootLink",
-              "versionType",
-              "youtubeLink",
-              "projectType",
-              "maxAcquisitions",
-              "version",
-              "lastUpdated",
-              "dashboard",
-              "createdAt",
-              "updatedAt",
-            ],
+              [
+                "id",
+                "projectId",
+                "name",
+                "description",
+                "whatItIs",
+                "howItWorks",
+                "priceInInr",
+                "keywordsList",
+                "difficulty",
+                "categoryId",
+                "testAndTroubleshootLink",
+                "versionType",
+                "youtubeLink",
+                "projectType",
+                "maxAcquisitions",
+                "version",
+                "lastUpdated",
+                "dashboard",
+                "createdAt",
+                "updatedAt",
+              ],
           include: [
             {
               model: ProjectFile,
@@ -1265,57 +1224,57 @@ class ProjectService {
         id: acquisitionData.id,
         project: serialNumber
           ? {
-            // Limited project info when filtering by serial number
-            id: acquisitionData.project.id,
-            name: acquisitionData.project.name,
-            files: acquisitionData.project.files || [],
-            images: imageUrls,
-          }
+              // Limited project info when filtering by serial number
+              id: acquisitionData.project.id,
+              name: acquisitionData.project.name,
+              files: acquisitionData.project.files || [],
+              images: imageUrls,
+            }
           : {
-            // Full project info when filtering by deviceId or no filter
-            id: acquisitionData.project.id,
-            projectId: acquisitionData.project.projectId,
-            name: acquisitionData.project.name,
-            description: acquisitionData.project.description,
-            whatItIs: acquisitionData.project.whatItIs,
-            howItWorks: acquisitionData.project.howItWorks,
-            priceInInr: acquisitionData.project.priceInInr,
-            keywordsList: acquisitionData.project.keywordsList,
-            difficulty: acquisitionData.project.difficulty,
-            categoryId: acquisitionData.project.categoryId,
-            testAndTroubleshootLink:
-              acquisitionData.project.testAndTroubleshootLink,
-            versionType: acquisitionData.project.versionType,
-            youtubeLink: acquisitionData.project.youtubeLink,
-            projectType: acquisitionData.project.projectType,
-            maxAcquisitions: acquisitionData.project.maxAcquisitions,
-            version: acquisitionData.project.version,
-            lastUpdated: acquisitionData.project.lastUpdated,
-            dashboard: acquisitionData.project.dashboard,
-            createdAt: acquisitionData.project.createdAt,
-            updatedAt: acquisitionData.project.updatedAt,
-            files: acquisitionData.project.files || [],
-            images: imageUrls,
-          },
+              // Full project info when filtering by deviceId or no filter
+              id: acquisitionData.project.id,
+              projectId: acquisitionData.project.projectId,
+              name: acquisitionData.project.name,
+              description: acquisitionData.project.description,
+              whatItIs: acquisitionData.project.whatItIs,
+              howItWorks: acquisitionData.project.howItWorks,
+              priceInInr: acquisitionData.project.priceInInr,
+              keywordsList: acquisitionData.project.keywordsList,
+              difficulty: acquisitionData.project.difficulty,
+              categoryId: acquisitionData.project.categoryId,
+              testAndTroubleshootLink:
+                acquisitionData.project.testAndTroubleshootLink,
+              versionType: acquisitionData.project.versionType,
+              youtubeLink: acquisitionData.project.youtubeLink,
+              projectType: acquisitionData.project.projectType,
+              maxAcquisitions: acquisitionData.project.maxAcquisitions,
+              version: acquisitionData.project.version,
+              lastUpdated: acquisitionData.project.lastUpdated,
+              dashboard: acquisitionData.project.dashboard,
+              createdAt: acquisitionData.project.createdAt,
+              updatedAt: acquisitionData.project.updatedAt,
+              files: acquisitionData.project.files || [],
+              images: imageUrls,
+            },
         device: acquisitionData.device
           ? serialNumber
             ? {
-              // Limited device info when filtering by serial number
-              id: acquisitionData.device.id,
-              deviceName: acquisitionData.device.deviceName,
-              serialNumber: acquisitionData.device.serialNumber,
-            }
+                // Limited device info when filtering by serial number
+                id: acquisitionData.device.id,
+                deviceName: acquisitionData.device.deviceName,
+                serialNumber: acquisitionData.device.serialNumber,
+              }
             : {
-              // Full device info when filtering by deviceId or no filter
-              id: acquisitionData.device.id,
-              deviceName: acquisitionData.device.deviceName,
-              serialNumber: acquisitionData.device.serialNumber,
-              deviceType: acquisitionData.device.deviceType,
-              firmwareVersion: acquisitionData.device.firmwareVersion,
-              isModified: acquisitionData.device.isModified,
-              nickName: acquisitionData.device.nickName,
-              lastUpdated: acquisitionData.device.lastUpdated,
-            }
+                // Full device info when filtering by deviceId or no filter
+                id: acquisitionData.device.id,
+                deviceName: acquisitionData.device.deviceName,
+                serialNumber: acquisitionData.device.serialNumber,
+                deviceType: acquisitionData.device.deviceType,
+                firmwareVersion: acquisitionData.device.firmwareVersion,
+                isModified: acquisitionData.device.isModified,
+                nickName: acquisitionData.device.nickName,
+                lastUpdated: acquisitionData.device.lastUpdated,
+              }
           : null,
       };
     });

@@ -223,67 +223,69 @@ class ProjectController {
     }
   }
 
+
+
   // Search categories by name
-  async searchCategories(req, res) {
-    try {
-      const { search, page = 1, limit = 10 } = req.query;
+async searchCategories(req, res) {
+  try {
+    const { search, page = 1, limit = 10 } = req.query;
 
-      if (!search || search.trim() === "") {
-        return res.status(400).json({
-          success: false,
-          message: "Search term is required",
-        });
-      }
-
-      const result = await ProjectService.searchCategories(search.trim(), {
-        page: parseInt(page),
-        limit: parseInt(limit),
-      });
-
-      return res.status(200).json({
-        success: true,
-        searchTerm: search.trim(),
-        ...result,
-      });
-    } catch (error) {
-      console.error("Error searching categories:", error);
-      return res.status(500).json({
+    if (!search || search.trim() === '') {
+      return res.status(400).json({
         success: false,
-        message: error.message,
+        message: "Search term is required",
       });
     }
+
+    const result = await ProjectService.searchCategories(search.trim(), { 
+      page: parseInt(page), 
+      limit: parseInt(limit) 
+    });
+
+    return res.status(200).json({
+      success: true,
+      searchTerm: search.trim(),
+      ...result,
+    });
+  } catch (error) {
+    console.error("Error searching categories:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
+}
 
-  // Search components by name
-  async searchComponents(req, res) {
-    try {
-      const { search, page = 1, limit = 10 } = req.query;
+// Search components by name
+async searchComponents(req, res) {
+  try {
+    const { search, page = 1, limit = 10 } = req.query;
 
-      if (!search || search.trim() === "") {
-        return res.status(400).json({
-          success: false,
-          message: "Search term is required",
-        });
-      }
-
-      const result = await ProjectService.searchComponents(search.trim(), {
-        page: parseInt(page),
-        limit: parseInt(limit),
-      });
-
-      return res.status(200).json({
-        success: true,
-        searchTerm: search.trim(),
-        ...result,
-      });
-    } catch (error) {
-      console.error("Error searching components:", error);
-      return res.status(500).json({
+    if (!search || search.trim() === '') {
+      return res.status(400).json({
         success: false,
-        message: error.message,
+        message: "Search term is required",
       });
     }
+
+    const result = await ProjectService.searchComponents(search.trim(), { 
+      page: parseInt(page), 
+      limit: parseInt(limit) 
+    });
+
+    return res.status(200).json({
+      success: true,
+      searchTerm: search.trim(),
+      ...result,
+    });
+  } catch (error) {
+    console.error("Error searching components:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
+}
 
   // Project operations
   // Project operations
@@ -321,18 +323,18 @@ class ProjectController {
         });
       }
 
-      if (req.body.projectId) {
-        const existingProject = await Project.findOne({
-          where: { projectId: req.body.projectId },
-        });
+         if (req.body.projectId) {
+      const existingProject = await Project.findOne({
+        where: { projectId: req.body.projectId },
+      });
 
-        if (existingProject) {
-          return res.status(400).json({
-            success: false,
-            message: `Project ID '${req.body.projectId}' already exists. Please choose a different one.`,
-          });
-        }
+      if (existingProject) {
+        return res.status(400).json({
+          success: false,
+          message: `Project ID '${req.body.projectId}' already exists. Please choose a different one.`,
+        });
       }
+    }
 
       if (!req.body.howItWorks) {
         return res.status(400).json({
@@ -479,7 +481,7 @@ class ProjectController {
 
           return ProjectFile.create({
             projectId: project.id,
-
+            
             filename: file.filename,
             originalName: file.originalname,
             fileType: path.extname(file.originalname),
@@ -542,55 +544,34 @@ class ProjectController {
     }
   }
 
-  async getProject(req, res) {
-    try {
-      const { projectId } = req.params;
-      const userId = req.user.id;
-      const userRole = req.user.role;
-
-      // Use the service method instead of direct Sequelize query
-      const project = await ProjectService.getProjectById(projectId);
-
-      if (!project) {
-        return res.status(404).json({
-          success: false,
-          message: "Project not found",
-        });
-      }
-
-      // Authorization check for viewing
-      if (
-        userRole !== "admin" &&
-        userRole !== "super_admin" &&
-        project.userId !== userId
-      ) {
-        return res.status(403).json({
-          success: false,
-          message: "Unauthorized to view this project",
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        project: project,
-      });
-    } catch (error) {
-      console.error("Error fetching project:", error);
-      return res.status(500).json({
-        success: false,
-        message: error.message,
-      });
-    }
-  }
-
   async editProject(req, res) {
     try {
-      const { projectId } = req.params;
+      const { projectId } = req.params; // This is the primary key id
       const userId = req.user.id;
       const userRole = req.user.role;
 
-      // Find existing project by primary key (for authorization check)
-      const existingProject = await Project.findByPk(projectId);
+      // Find existing project by primary key
+      const existingProject = await Project.findByPk(projectId, {
+        include: [
+          {
+            model: ProjectFile,
+            as: "files",
+          },
+          {
+            model: ProjectImage,
+            as: "images",
+          },
+          {
+            model: Category,
+            as: "category",
+          },
+          {
+            model: Component,
+            as: "components",
+            through: { attributes: [] },
+          },
+        ],
+      });
 
       if (!existingProject) {
         return res.status(404).json({
@@ -622,6 +603,7 @@ class ProjectController {
       if (req.body.description !== undefined)
         updateData.description = req.body.description;
       if (req.body.keywords !== undefined) {
+        // Handle keywords update
         let keywordsList = [];
         if (typeof req.body.keywords === "string") {
           keywordsList = req.body.keywords
@@ -658,57 +640,160 @@ class ProjectController {
       if (req.body.dashboard !== undefined)
         updateData.dashboard = req.body.dashboard;
 
-      // Handle required components
-      if (req.body.requiredComponents) {
-        try {
-          updateData.requiredComponents = JSON.parse(
-            req.body.requiredComponents
-          );
-        } catch (e) {
-          console.error("Error parsing required components:", e);
-          updateData.requiredComponents = [];
-        }
-      }
+      // Update project basic info
+      await existingProject.update(updateData);
 
-      // Prepare files object for service
-      const files = {};
+      const projectFolder = path.join(
+        process.cwd(),
+        "public",
+        "projects",
+        projectId.toString()
+      );
 
-      // Handle images to delete
+      // Handle image updates
+      let imagesToDelete = [];
       if (req.body.imagesToDelete) {
         try {
-          const imagesToDelete = JSON.parse(req.body.imagesToDelete);
-          updateData.imagesToDelete = imagesToDelete;
+          imagesToDelete = JSON.parse(req.body.imagesToDelete);
         } catch (e) {
           console.error("Error parsing imagesToDelete:", e);
         }
       }
 
-      // Handle files to delete
+      // Delete specified images
+      if (imagesToDelete.length > 0) {
+        for (const imageId of imagesToDelete) {
+          const imageToDelete = await ProjectImage.findByPk(imageId);
+          if (imageToDelete && imageToDelete.projectId === existingProject.id) {
+            // Delete physical file
+            if (fs.existsSync(imageToDelete.filePath)) {
+              fs.unlinkSync(imageToDelete.filePath);
+            }
+            // Delete from database
+            await imageToDelete.destroy();
+          }
+        }
+      }
+
+      // Handle new images
+      if (req.files && req.files.images) {
+        const imageFolder = path.join(projectFolder, "images");
+        if (!fs.existsSync(imageFolder)) {
+          fs.mkdirSync(imageFolder, { recursive: true });
+        }
+
+        const imagePromises = req.files.images.map(async (imageFile) => {
+          const imagePath = path.join(imageFolder, imageFile.filename);
+          fs.renameSync(imageFile.path, imagePath);
+
+          return ProjectImage.create({
+            projectId: existingProject.id,
+            filename: imageFile.filename,
+            originalName: imageFile.originalname,
+            filePath: imagePath,
+            publicUrl: `/projects/${existingProject.id}/images/${imageFile.filename}`,
+            fileSize: imageFile.size,
+            mimetype: imageFile.mimetype,
+          });
+        });
+
+        await Promise.all(imagePromises);
+      }
+
+      // Handle files update
+      let filesToDelete = [];
       if (req.body.filesToDelete) {
         try {
-          const filesToDelete = JSON.parse(req.body.filesToDelete);
-          updateData.filesToDelete = filesToDelete;
+          filesToDelete = JSON.parse(req.body.filesToDelete);
         } catch (e) {
           console.error("Error parsing filesToDelete:", e);
         }
       }
 
-      // Handle new uploaded files
-      if (req.files) {
-        if (req.files.images) {
-          files.images = req.files.images;
-        }
-        if (req.files.files) {
-          files.projectFiles = req.files.files;
+      // Delete specified files
+      if (filesToDelete.length > 0) {
+        for (const fileId of filesToDelete) {
+          const fileToDelete = await ProjectFile.findByPk(fileId);
+          if (fileToDelete && fileToDelete.projectId === existingProject.id) {
+            // Delete physical file
+            if (fs.existsSync(fileToDelete.filePath)) {
+              fs.unlinkSync(fileToDelete.filePath);
+            }
+            // Delete from database
+            await fileToDelete.destroy();
+          }
         }
       }
 
-      // Use the service method to update the project
-      const updatedProject = await ProjectService.updateProject(
-        projectId,
-        updateData,
-        files
-      );
+      // Handle new files
+      if (req.files && req.files.files) {
+        const filesPromises = req.files.files.map(async (file) => {
+          const filePath = path.join(projectFolder, file.filename);
+          fs.renameSync(file.path, filePath);
+
+          return ProjectFile.create({
+            projectId: existingProject.id,
+            filename: file.filename,
+            originalName: file.originalname,
+            fileType: path.extname(file.originalname),
+            fileSize: file.size,
+            filePath: filePath,
+            mimetype: file.mimetype,
+            isZipExtracted: false,
+            originalZipName: null,
+          });
+        });
+
+        await Promise.all(filesPromises);
+      }
+
+      // Handle required components update
+      if (req.body.requiredComponents) {
+        try {
+          const requiredComponents = JSON.parse(req.body.requiredComponents);
+
+          // Remove existing components
+          await ProjectComponent.destroy({
+            where: { projectId: existingProject.id },
+          });
+
+          // Add new components
+          if (requiredComponents.length > 0) {
+            const componentPromises = requiredComponents.map((componentId) =>
+              ProjectComponent.create({
+                projectId: existingProject.id,
+                componentId: componentId,
+              })
+            );
+            await Promise.all(componentPromises);
+          }
+        } catch (e) {
+          console.error("Error updating required components:", e);
+        }
+      }
+
+      // Fetch updated project with all associations
+      const updatedProject = await Project.findByPk(projectId, {
+        include: [
+          {
+            model: ProjectFile,
+            as: "files",
+          },
+          {
+            model: ProjectImage,
+            as: "images",
+          },
+          {
+            model: Category,
+            as: "category",
+          },
+          {
+            model: Component,
+            as: "components",
+            through: { attributes: [] },
+          },
+        ],
+      });
 
       return res.status(200).json({
         success: true,
@@ -724,73 +809,114 @@ class ProjectController {
     }
   }
 
-async searchProjects(req, res) {
-  console.log("Search query parameters:", req.query);
-  console.log("Request path:", req.path);
-  console.log("Request URL:", req.url);
-  
-  try {
-    const {
-      keyword,
-      componentId,
-      projectName,
-      project_id, // Note: using project_id to match your query parameter
-      projectId,  // Also accept projectId for flexibility
-      categoryId,
-      difficulty,
-      projectType,
-      page = 1,
-      limit = 10,
-    } = req.query;
+  async getProject(req, res) {
+    try {
+      const { projectId } = req.params;
+      const userId = req.user.id;
+      const userRole = req.user.role;
 
-    // Handle both project_id and projectId parameter names
-    const searchProjectId = project_id || projectId;
+      const project = await Project.findByPk(projectId, {
+        include: [
+          {
+            model: ProjectFile,
+            as: "files",
+          },
+          {
+            model: ProjectImage,
+            as: "images",
+          },
+          {
+            model: Category,
+            as: "category",
+          },
+          {
+            model: Component,
+            as: "components",
+            through: { attributes: [] },
+          },
+        ],
+      });
 
-    console.log("Parsed parameters:", {
-      keyword,
-      componentId,
-      projectName,
-      searchProjectId,
-      categoryId,
-      difficulty,
-      projectType,
-      page,
-      limit
-    });
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message: "Project not found",
+        });
+      }
 
-    // Use the service layer
-    const result = await ProjectService.searchProjects(
-      {
+      // Authorization check for viewing
+      if (
+        userRole !== "admin" &&
+        userRole !== "super_admin" &&
+        project.userId !== userId
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized to view this project",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        project: project,
+      });
+    } catch (error) {
+      console.error("Error fetching project:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  async searchProjects(req, res) {
+    console.log("Search query parameters:", req.query);
+    console.log("Request path:", req.path);
+    try {
+      const {
         keyword,
         componentId,
         projectName,
-        projectId: searchProjectId, // Pass the resolved project ID
+        projectId, // This now searches the custom projectId field
         categoryId,
         difficulty,
         projectType,
-      },
-      { page, limit }
-    );
+        page = 1,
+        limit = 10,
+      } = req.query;
 
-    return res.status(200).json({
-      success: true,
-      projects: result.projects,
-      pagination: {
-        currentPage: result.currentPage,
-        totalPages: result.totalPages,
-        totalProjects: result.totalProjects,
-        limit: parseInt(limit),
-      },
-    });
-  } catch (error) {
-    console.error("Error searching projects:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-      error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-    });
+      // Use the service layer
+      const result = await ProjectService.searchProjects(
+        {
+          keyword,
+          componentId,
+          projectName,
+          projectId, // Custom projectId search
+          categoryId,
+          difficulty,
+          projectType,
+        },
+        { page, limit }
+      );
+
+      return res.status(200).json({
+        success: true,
+        projects: result.projects,
+        pagination: {
+          currentPage: result.currentPage,
+          totalPages: result.totalPages,
+          totalProjects: result.totalProjects,
+          limit: parseInt(limit),
+        },
+      });
+    } catch (error) {
+      console.error("Error searching projects:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
   }
-}
 
   async getUserProjects(req, res) {
     try {
@@ -1000,7 +1126,7 @@ async searchProjects(req, res) {
   async getAcquiredProjects(req, res) {
     try {
       const userId = req.user.id;
-      const { page = 1, limit = 10, deviceId, serialNumber } = req.query;
+      const { page = 1, limit = 10, deviceId } = req.query;
 
       // Validate deviceId if provided
       if (deviceId && isNaN(parseInt(deviceId))) {
@@ -1010,19 +1136,10 @@ async searchProjects(req, res) {
         });
       }
 
-      // Validate that only one filter is provided at a time
-      if (deviceId && serialNumber) {
-        return res.status(400).json({
-          success: false,
-          message: "Please provide either deviceId or serialNumber, not both",
-        });
-      }
-
       const result = await ProjectService.getAcquiredProjects(userId, {
         page: parseInt(page),
         limit: parseInt(limit),
         deviceId: deviceId ? parseInt(deviceId) : null,
-        serialNumber: serialNumber || null,
       });
 
       res.json({
@@ -1031,9 +1148,8 @@ async searchProjects(req, res) {
         totalAcquiredProjects: result.totalProjectsAcquired,
         currentPage: result.currentPage,
         totalPages: result.totalPages,
-        filteredByDevice: !!(deviceId || serialNumber),
+        filteredByDevice: !!deviceId,
         deviceId: deviceId ? parseInt(deviceId) : null,
-        serialNumber: serialNumber || null,
       });
     } catch (error) {
       console.error("Get Acquired Projects Error:", error);
