@@ -863,7 +863,7 @@ class ProjectService {
     console.log("Service received parameters:", searchParams);
 
     let whereCondition = {
-      deletedAt: null, // Use camelCase as defined in your model
+     
       versionType: "release", // Only show release version projects
     };
 
