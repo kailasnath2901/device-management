@@ -3,6 +3,7 @@ const Device = require("../model/user-device.model"); // Import Device model
 const fs = require("fs");
 const path = require("path");
 const { Op } = require("sequelize");
+const sequelize = require("../config/sequelize"); 
 const AdmZip = require("adm-zip");
 
 // Helper function to determine file type
