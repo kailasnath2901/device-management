@@ -899,8 +899,6 @@ class ProjectService {
     };
 
     // Apply version type filter based on user role
-    // Regular users can only see "release" versions
-    // Admins/super_admins/testers can see ALL versions
     if (!userRole || !["admin", "super_admin", "tester"].includes(userRole)) {
       whereCondition.versionType = "release";
     }
@@ -935,21 +933,31 @@ class ProjectService {
       },
     ];
 
-    // Fixed: Search by projectId (custom projectId field)
+    // FIXED: Use the database column name directly or use sequelize.where
     if (projectId) {
-      whereCondition.projectId = projectId; // This should work since projectId is the field name
+      // Option 1: Use the model field name (should work with field mapping)
+      whereCondition.projectId = projectId;
+
+      // Option 2: If above doesn't work, use sequelize.where with column name
+      // whereCondition[Op.and] = [
+      //   ...(whereCondition[Op.and] || []),
+      //   sequelize.where(sequelize.col('project_id'), projectId)
+      // ];
+
+      // Option 3: If still doesn't work, use the actual column name
+      // whereCondition.project_id = projectId;
     }
 
-    // Fixed: Search by project name with correct template literal syntax
+    // Search by project name
     if (projectName) {
       whereCondition.name = {
-        [Op.like]: `%${projectName}%`, // ✅ Fixed: Added backticks
+        [Op.like]: `%${projectName}%`,
       };
     }
 
     // Search by category
     if (categoryId) {
-      whereCondition.category_id = categoryId;
+      whereCondition.categoryId = categoryId; // Use model field name
     }
 
     // Search by difficulty
@@ -959,24 +967,21 @@ class ProjectService {
 
     // Search by project type
     if (projectType) {
-      whereCondition.project_type = projectType;
+      whereCondition.projectType = projectType; // Use model field name
     }
 
-    // Fixed: Search by keywords with correct template literal syntax
+    // Search by keywords
     if (keyword) {
       whereCondition[Op.or] = [
-        // Use model attribute names (not table column names)
-        { name: { [Op.like]: `%${keyword}%` } }, // ✅ Fixed: Added backticks
-        { description: { [Op.like]: `%${keyword}%` } }, // ✅ Fixed: Added backticks
-        { projectId: { [Op.like]: `%${keyword}%` } }, // Also search in custom projectId
-        // For JSON search in MySQL - Fixed template literal
-        sequelize.literal(`JSON_CONTAINS(keywords_list, '"${keyword}"')`), // ✅ Fixed: Proper template literal
-        // Use field mappings for underscored columns
+        { name: { [Op.like]: `%${keyword}%` } },
+        { description: { [Op.like]: `%${keyword}%` } },
+        { projectId: { [Op.like]: `%${keyword}%` } },
+        sequelize.literal(`JSON_CONTAINS(keywords_list, '"${keyword}"')`),
         sequelize.where(sequelize.col("what_it_is"), {
-          [Op.like]: `%${keyword}%`, // ✅ Fixed: Added backticks
+          [Op.like]: `%${keyword}%`,
         }),
         sequelize.where(sequelize.col("how_it_works"), {
-          [Op.like]: `%${keyword}%`, // ✅ Fixed: Added backticks
+          [Op.like]: `%${keyword}%`,
         }),
       ];
     }
@@ -994,7 +999,7 @@ class ProjectService {
       console.log(
         "Final whereCondition:",
         JSON.stringify(whereCondition, null, 2)
-      ); // Debug log
+      );
 
       const { count, rows } = await Project.findAndCountAll({
         where: whereCondition,
@@ -1005,8 +1010,8 @@ class ProjectService {
         distinct: true,
       });
 
-      console.log("Query result count:", count); // Debug log
-      console.log("Query result rows:", rows.length); // Debug log
+      console.log("Query result count:", count);
+      console.log("Query result rows:", rows.length);
 
       const projectsWithImageUrls = rows.map((project) => {
         const projectData = project.toJSON();
@@ -1027,7 +1032,7 @@ class ProjectService {
         message: error.message,
         sql: error.sql,
         stack: error.stack,
-        whereCondition: whereCondition, // Log the where condition
+        whereCondition: whereCondition,
       });
       throw error;
     }

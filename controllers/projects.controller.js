@@ -896,6 +896,7 @@ class ProjectController {
       });
     }
   }
+
   async searchProjects(req, res) {
     console.log("Search query parameters:", req.query);
     console.log("Request path:", req.path);
@@ -904,13 +905,18 @@ class ProjectController {
         keyword,
         componentId,
         projectName,
-        projectId, // This now searches the custom projectId field
+        projectId, // This receives 'projectId' from query
+        project_id, // This receives 'project_id' from query
         categoryId,
         difficulty,
         projectType,
         page = 1,
         limit = 10,
       } = req.query;
+
+      // Handle both parameter names - use whichever is provided
+      const actualProjectId = projectId || project_id;
+
       const userRole = req.user.role;
 
       // Use the service layer
@@ -919,7 +925,7 @@ class ProjectController {
           keyword,
           componentId,
           projectName,
-          projectId, // Custom projectId search
+          projectId: actualProjectId, // Pass the actual project ID
           categoryId,
           difficulty,
           projectType,
