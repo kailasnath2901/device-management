@@ -933,19 +933,8 @@ class ProjectService {
       },
     ];
 
-    // FIXED: Use the database column name directly or use sequelize.where
     if (projectId) {
-      // Option 1: Use the model field name (should work with field mapping)
-      whereCondition.projectId = projectId;
-
-      // Option 2: If above doesn't work, use sequelize.where with column name
-      // whereCondition[Op.and] = [
-      //   ...(whereCondition[Op.and] || []),
-      //   sequelize.where(sequelize.col('project_id'), projectId)
-      // ];
-
-      // Option 3: If still doesn't work, use the actual column name
-      // whereCondition.project_id = projectId;
+      whereCondition.project_id = projectId; // ✅ Use actual database column name
     }
 
     // Search by project name
@@ -955,9 +944,8 @@ class ProjectService {
       };
     }
 
-    // Search by category
     if (categoryId) {
-      whereCondition.categoryId = categoryId; // Use model field name
+      whereCondition.category_id = categoryId; // Use database column name
     }
 
     // Search by difficulty
@@ -965,9 +953,8 @@ class ProjectService {
       whereCondition.difficulty = difficulty;
     }
 
-    // Search by project type
     if (projectType) {
-      whereCondition.projectType = projectType; // Use model field name
+      whereCondition.project_type = projectType; // Use database column name
     }
 
     // Search by keywords
@@ -986,7 +973,6 @@ class ProjectService {
       ];
     }
 
-    // Search by component
     if (componentId) {
       includeConditions[3].where = {
         ...includeConditions[3].where,
@@ -994,7 +980,6 @@ class ProjectService {
       };
       includeConditions[3].required = true;
     }
-
     try {
       console.log(
         "Final whereCondition:",
