@@ -881,147 +881,182 @@ class ProjectService {
     }
   }
 
-  async searchProjects(searchParams, options = {}, userRole = null) {
-    const { page = 1, limit = 10 } = options;
-    const {
-      keyword,
-      componentId,
-      projectName,
-      projectId,
-      categoryId,
-      difficulty,
-      projectType,
-    } = searchParams;
-    const offset = (page - 1) * limit;
+async searchProjects(searchParams, options = {}, userRole = null) {
+  const { page = 1, limit = 10 } = options;
+  const {
+    keyword,
+    componentId,
+    projectName,
+    projectId,
+    categoryId,
+    difficulty,
+    projectType,
+  } = searchParams;
+  const offset = (page - 1) * limit;
 
-    let whereCondition = {
-      deleted_at: null,
-    };
+  let whereCondition = {
+    deleted_at: null,
+  };
 
-    // Apply version type filter based on user role
-    if (!["admin", "super_admin", "tester"].includes(userRole)) {
-      whereCondition.version_type = "release";
-    }
+  // DEBUG: Log the user role
+  console.log("DEBUG - User role received:", userRole);
+  console.log("DEBUG - User role type:", typeof userRole);
 
-    let includeConditions = [
-      {
-        model: ProjectFile,
-        as: "files",
-        required: false,
-        where: { deleted_at: null },
-      },
-      {
-        model: ProjectImage,
-        as: "images",
-        required: false,
-        where: { deleted_at: null },
-      },
-      {
-        model: Category,
-        as: "category",
-        attributes: ["id", "name"],
-        where: { deleted_at: null },
-      },
-      {
-        model: Component,
-        as: "components",
-        attributes: ["id", "name"],
-        through: {
-          attributes: ["quantity"],
-        },
-        where: { deleted_at: null },
-      },
-    ];
-
-    if (projectId) {
-      whereCondition.project_id = projectId; // ✅ Use actual database column name
-    }
-
-    // Search by project name
-    if (projectName) {
-      whereCondition.name = {
-        [Op.like]: `%${projectName}%`,
-      };
-    }
-
-    if (categoryId) {
-      whereCondition.category_id = categoryId; // Use database column name
-    }
-
-    // Search by difficulty
-    if (difficulty) {
-      whereCondition.difficulty = difficulty;
-    }
-
-    if (projectType) {
-      whereCondition.project_type = projectType; // Use database column name
-    }
-
-    // Search by keywords
-    if (keyword) {
-      whereCondition[Op.or] = [
-        { name: { [Op.like]: `%${keyword}%` } },
-        { description: { [Op.like]: `%${keyword}%` } },
-        { projectId: { [Op.like]: `%${keyword}%` } },
-        sequelize.literal(`JSON_CONTAINS(keywords_list, '"${keyword}"')`),
-        sequelize.where(sequelize.col("what_it_is"), {
-          [Op.like]: `%${keyword}%`,
-        }),
-        sequelize.where(sequelize.col("how_it_works"), {
-          [Op.like]: `%${keyword}%`,
-        }),
-      ];
-    }
-
-    if (componentId) {
-      includeConditions[3].where = {
-        ...includeConditions[3].where,
-        id: componentId,
-      };
-      includeConditions[3].required = true;
-    }
-    try {
-      console.log(
-        "Final whereCondition:",
-        JSON.stringify(whereCondition, null, 2)
-      );
-
-      const { count, rows } = await Project.findAndCountAll({
-        where: whereCondition,
-        include: includeConditions,
-        limit: parseInt(limit, 10),
-        offset: parseInt(offset, 10),
-        order: [["created_at", "DESC"]],
-        distinct: true,
-      });
-
-      console.log("Query result count:", count);
-      console.log("Query result rows:", rows.length);
-
-      const projectsWithImageUrls = rows.map((project) => {
-        const projectData = project.toJSON();
-        if (projectData.images) {
-          projectData.images = this.generateImageUrls(projectData.images);
-        }
-        return projectData;
-      });
-
-      return {
-        projects: projectsWithImageUrls,
-        totalProjects: count,
-        totalPages: Math.ceil(count / limit),
-        currentPage: parseInt(page, 10),
-      };
-    } catch (error) {
-      console.error("Search error:", {
-        message: error.message,
-        sql: error.sql,
-        stack: error.stack,
-        whereCondition: whereCondition,
-      });
-      throw error;
-    }
+  // Apply version type filter based on user role
+  if (!userRole || !["admin", "super_admin", "tester"].includes(userRole)) {
+    whereCondition.version_type = "release";
+    console.log("DEBUG - Added version_type filter: release");
+  } else {
+    console.log("DEBUG - No version_type filter applied (admin/super_admin/tester)");
   }
+
+  let includeConditions = [
+    {
+      model: ProjectFile,
+      as: "files",
+      required: false,
+      where: { deleted_at: null },
+    },
+    {
+      model: ProjectImage,
+      as: "images",
+      required: false,
+      where: { deleted_at: null },
+    },
+    {
+      model: Category,
+      as: "category",
+      attributes: ["id", "name"],
+      where: { deleted_at: null },
+    },
+    {
+      model: Component,
+      as: "components",
+      attributes: ["id", "name"],
+      through: {
+        attributes: ["quantity"],
+      },
+      where: { deleted_at: null },
+    },
+  ];
+
+  if (projectId) {
+    whereCondition.project_id = projectId;
+    console.log("DEBUG - Added project_id filter:", projectId);
+  }
+
+  // Search by project name
+  if (projectName) {
+    whereCondition.name = {
+      [Op.like]: `%${projectName}%`,
+    };
+  }
+
+  if (categoryId) {
+    whereCondition.category_id = categoryId;
+  }
+
+  // Search by difficulty
+  if (difficulty) {
+    whereCondition.difficulty = difficulty;
+  }
+
+  if (projectType) {
+    whereCondition.project_type = projectType;
+  }
+
+  // Search by keywords
+  if (keyword) {
+    whereCondition[Op.or] = [
+      { name: { [Op.like]: `%${keyword}%` } },
+      { description: { [Op.like]: `%${keyword}%` } },
+      { project_id: { [Op.like]: `%${keyword}%` } }, // Fixed: use database column name
+      sequelize.literal(`JSON_CONTAINS(keywords_list, '"${keyword}"')`),
+      sequelize.where(sequelize.col("what_it_is"), {
+        [Op.like]: `%${keyword}%`,
+      }),
+      sequelize.where(sequelize.col("how_it_works"), {
+        [Op.like]: `%${keyword}%`,
+      }),
+    ];
+  }
+
+  if (componentId) {
+    includeConditions[3].where = {
+      ...includeConditions[3].where,
+      id: componentId,
+    };
+    includeConditions[3].required = true;
+  }
+
+  try {
+    console.log("Final whereCondition:", JSON.stringify(whereCondition, null, 2));
+
+    // DEBUG: Test the exact database query
+    console.log("DEBUG - About to execute Sequelize query");
+    
+    const { count, rows } = await Project.findAndCountAll({
+      where: whereCondition,
+      include: includeConditions,
+      limit: parseInt(limit, 10),
+      offset: parseInt(offset, 10),
+      order: [["created_at", "DESC"]],
+      distinct: true,
+      logging: console.log, // This will show the actual SQL query
+    });
+
+    console.log("Query result count:", count);
+    console.log("Query result rows:", rows.length);
+
+    // DEBUG: If no results but we expect some, try a simpler query
+    if (count === 0 && projectId) {
+      console.log("DEBUG - No results found. Trying simplified query...");
+      const simpleResult = await Project.findAll({
+        where: { 
+          project_id: projectId,
+          deleted_at: null 
+        },
+        logging: console.log
+      });
+      console.log("DEBUG - Simple query result:", simpleResult.length);
+      
+      // Also try with version_type
+      const versionResult = await Project.findAll({
+        where: { 
+          project_id: projectId,
+          deleted_at: null,
+          version_type: "release"
+        },
+        logging: console.log
+      });
+      console.log("DEBUG - With version_type filter result:", versionResult.length);
+    }
+
+    const projectsWithImageUrls = rows.map((project) => {
+      const projectData = project.toJSON();
+      if (projectData.images) {
+        projectData.images = this.generateImageUrls(projectData.images);
+      }
+      return projectData;
+    });
+
+    return {
+      projects: projectsWithImageUrls,
+      totalProjects: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: parseInt(page, 10),
+    };
+  } catch (error) {
+    console.error("Search error:", {
+      message: error.message,
+      sql: error.sql,
+      stack: error.stack,
+      whereCondition: whereCondition,
+    });
+    throw error;
+  }
+}
+
 
   generateImageUrls(images) {
     const baseUrl =
