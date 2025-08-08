@@ -900,7 +900,7 @@ class ProjectService {
 
     // Apply version type filter based on user role
     if (!["admin", "super_admin", "tester"].includes(userRole)) {
-      whereCondition.versionType = "release";
+      whereCondition.version_type = "release";
     }
 
     let includeConditions = [
