@@ -223,69 +223,67 @@ class ProjectController {
     }
   }
 
-
-
   // Search categories by name
-async searchCategories(req, res) {
-  try {
-    const { search, page = 1, limit = 10 } = req.query;
+  async searchCategories(req, res) {
+    try {
+      const { search, page = 1, limit = 10 } = req.query;
 
-    if (!search || search.trim() === '') {
-      return res.status(400).json({
+      if (!search || search.trim() === "") {
+        return res.status(400).json({
+          success: false,
+          message: "Search term is required",
+        });
+      }
+
+      const result = await ProjectService.searchCategories(search.trim(), {
+        page: parseInt(page),
+        limit: parseInt(limit),
+      });
+
+      return res.status(200).json({
+        success: true,
+        searchTerm: search.trim(),
+        ...result,
+      });
+    } catch (error) {
+      console.error("Error searching categories:", error);
+      return res.status(500).json({
         success: false,
-        message: "Search term is required",
+        message: error.message,
       });
     }
-
-    const result = await ProjectService.searchCategories(search.trim(), { 
-      page: parseInt(page), 
-      limit: parseInt(limit) 
-    });
-
-    return res.status(200).json({
-      success: true,
-      searchTerm: search.trim(),
-      ...result,
-    });
-  } catch (error) {
-    console.error("Error searching categories:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
   }
-}
 
-// Search components by name
-async searchComponents(req, res) {
-  try {
-    const { search, page = 1, limit = 10 } = req.query;
+  // Search components by name
+  async searchComponents(req, res) {
+    try {
+      const { search, page = 1, limit = 10 } = req.query;
 
-    if (!search || search.trim() === '') {
-      return res.status(400).json({
+      if (!search || search.trim() === "") {
+        return res.status(400).json({
+          success: false,
+          message: "Search term is required",
+        });
+      }
+
+      const result = await ProjectService.searchComponents(search.trim(), {
+        page: parseInt(page),
+        limit: parseInt(limit),
+      });
+
+      return res.status(200).json({
+        success: true,
+        searchTerm: search.trim(),
+        ...result,
+      });
+    } catch (error) {
+      console.error("Error searching components:", error);
+      return res.status(500).json({
         success: false,
-        message: "Search term is required",
+        message: error.message,
       });
     }
-
-    const result = await ProjectService.searchComponents(search.trim(), { 
-      page: parseInt(page), 
-      limit: parseInt(limit) 
-    });
-
-    return res.status(200).json({
-      success: true,
-      searchTerm: search.trim(),
-      ...result,
-    });
-  } catch (error) {
-    console.error("Error searching components:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
   }
-}
 
   // Project operations
   // Project operations
@@ -323,18 +321,18 @@ async searchComponents(req, res) {
         });
       }
 
-         if (req.body.projectId) {
-      const existingProject = await Project.findOne({
-        where: { projectId: req.body.projectId },
-      });
-
-      if (existingProject) {
-        return res.status(400).json({
-          success: false,
-          message: `Project ID '${req.body.projectId}' already exists. Please choose a different one.`,
+      if (req.body.projectId) {
+        const existingProject = await Project.findOne({
+          where: { projectId: req.body.projectId },
         });
+
+        if (existingProject) {
+          return res.status(400).json({
+            success: false,
+            message: `Project ID '${req.body.projectId}' already exists. Please choose a different one.`,
+          });
+        }
       }
-    }
 
       if (!req.body.howItWorks) {
         return res.status(400).json({
@@ -481,7 +479,7 @@ async searchComponents(req, res) {
 
           return ProjectFile.create({
             projectId: project.id,
-            
+
             filename: file.filename,
             originalName: file.originalname,
             fileType: path.extname(file.originalname),
@@ -869,6 +867,35 @@ async searchComponents(req, res) {
     }
   }
 
+  async getProjectByProjectId(req, res) {
+    try {
+      const { projectId } = req.params;
+      const userRole = req.user.role;
+
+      const project = await ProjectService.getProjectByProjectId(
+        projectId,
+        userRole
+      );
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message: `Project with ID '${projectId}' not found`,
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        project: project,
+      });
+    } catch (error) {
+      console.error("Error fetching project by projectId:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
   async searchProjects(req, res) {
     console.log("Search query parameters:", req.query);
     console.log("Request path:", req.path);
@@ -884,6 +911,7 @@ async searchComponents(req, res) {
         page = 1,
         limit = 10,
       } = req.query;
+      const userRole = req.user.role;
 
       // Use the service layer
       const result = await ProjectService.searchProjects(
@@ -896,7 +924,8 @@ async searchComponents(req, res) {
           difficulty,
           projectType,
         },
-        { page, limit }
+        { page, limit },
+        userRole
       );
 
       return res.status(200).json({

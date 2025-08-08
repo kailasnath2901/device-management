@@ -819,13 +819,75 @@ class ProjectService {
     };
   }
 
+  async getProjectByProjectId(projectId, userRole) {
+    try {
+      console.log("Service: Looking for project with projectId:", projectId);
+
+      const whereCondition = {
+        projectId: projectId,
+        deleted_at: null,
+      };
+
+      // Apply version type filter based on user role
+      if (!["admin", "super_admin", "tester"].includes(userRole)) {
+        whereCondition.versionType = "release";
+      }
+
+      const project = await Project.findOne({
+        where: whereCondition,
+        include: [
+          {
+            model: ProjectFile,
+            as: "files",
+            where: { deleted_at: null },
+            required: false,
+          },
+          {
+            model: ProjectImage,
+            as: "images",
+            where: { deleted_at: null },
+            required: false,
+          },
+          {
+            model: Category,
+            as: "category",
+            attributes: ["id", "name"],
+          },
+          {
+            model: Component,
+            as: "components",
+            attributes: ["id", "name"],
+            through: {
+              attributes: ["quantity"],
+            },
+          },
+        ],
+      });
+
+      if (!project) {
+        return null;
+      }
+
+      // Add public URLs for images
+      const projectData = project.toJSON();
+      if (projectData.images) {
+        projectData.images = this.generateImageUrls(projectData.images);
+      }
+
+      return projectData;
+    } catch (error) {
+      console.error("Service error fetching project by projectId:", error);
+      throw error;
+    }
+  }
+
   async searchProjects(searchParams, options = {}) {
     const { page = 1, limit = 10 } = options;
     const {
       keyword,
       componentId,
       projectName,
-      projectId, // This now refers to the custom projectId field
+      projectId,
       categoryId,
       difficulty,
       projectType,
@@ -834,8 +896,15 @@ class ProjectService {
 
     let whereCondition = {
       deleted_at: null,
-      versionType: "release", // Only show release version projects
     };
+
+    // Apply version type filter based on user role
+    // Regular users can only see "release" versions
+    // Admins/super_admins/testers can see ALL versions
+    if (!userRole || !["admin", "super_admin", "tester"].includes(userRole)) {
+      whereCondition.versionType = "release";
+    } else {
+    }
 
     let includeConditions = [
       {

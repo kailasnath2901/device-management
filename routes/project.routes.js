@@ -29,6 +29,7 @@ router.get("/project/:projectId", authenticate, projectController.getProject);
 router.get('/search', authenticate, projectController.searchProjects);
 router.get("/project/user/list", authenticate, projectController.getUserProjects);
 router.delete("/project/:projectId/delete", authenticate, authorizeRoles("admin", "super_admin"), projectController.deleteProject);
+router.get('/projectId/:projectId', authenticate, projectController.getProjectByProjectId);
 
 // File and acquisition routes
 router.get("/file/:fileId/download", authenticate, projectController.downloadProjectFile);

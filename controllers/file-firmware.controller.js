@@ -72,7 +72,6 @@ const uploadFirmware = async (req, res) => {
       allFiles.push(req.file);
     }
 
-
     if (allFiles.length === 0) {
       return res.status(400).json({
         success: false,
@@ -246,7 +245,6 @@ const getAllFirmware = async (req, res) => {
   }
 };
 
-
 // Updated listExtractedFiles function
 const listExtractedFiles = async (req, res) => {
   try {
@@ -308,7 +306,6 @@ const listExtractedFiles = async (req, res) => {
         version: firmware.version,
         files: fileList,
         downloadAllUrl: `/api/firmware/download/${id}`,
-
       },
     });
   } catch (error) {
@@ -442,8 +439,9 @@ const downloadFirmware = async (req, res) => {
         addDirectoryToZip(extractPath);
 
         const zipBuffer = zip.toBuffer();
-        const fileName = `${firmware.fileName.replace(".zip", "")}_v${firmware.version
-          }.zip`;
+        const fileName = `${firmware.fileName.replace(".zip", "")}_v${
+          firmware.version
+        }.zip`;
 
         res.set({
           "Content-Type": "application/zip",
@@ -583,7 +581,7 @@ const setFirmwareUpdateAvailable = async (req, res) => {
     if (!version && !id) {
       return res.status(400).json({
         success: false,
-        message: "Either version or id is required"
+        message: "Either version or id is required",
       });
     }
 
@@ -600,7 +598,7 @@ const setFirmwareUpdateAvailable = async (req, res) => {
       }
     }
 
-    console.log('Updating firmware with whereClause:', whereClause);
+    console.log("Updating firmware with whereClause:", whereClause);
 
     // Use a transaction to ensure data consistency
     const result = await Firmware.sequelize.transaction(async (t) => {
@@ -608,19 +606,19 @@ const setFirmwareUpdateAvailable = async (req, res) => {
         { firmwareUpdateAvailable: true },
         {
           where: whereClause,
-          transaction: t
+          transaction: t,
         }
       );
 
       if (updatedCount === 0) {
-        throw new Error('No firmware found to update');
+        throw new Error("No firmware found to update");
       }
 
       // Get the updated firmware records to return
       const updatedFirmware = await Firmware.findAll({
         where: whereClause,
-        attributes: ['id', 'version', 'deviceType', 'firmwareUpdateAvailable'],
-        transaction: t
+        attributes: ["id", "version", "deviceType", "firmwareUpdateAvailable"],
+        transaction: t,
       });
 
       return { updatedCount, updatedFirmware };
@@ -631,16 +629,15 @@ const setFirmwareUpdateAvailable = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: `Firmware update flag set for ${result.updatedCount} firmware(s)`,
-      data: result.updatedFirmware
+      data: result.updatedFirmware,
     });
-
   } catch (error) {
     console.error("Error setting firmware update flag:", error);
 
-    if (error.message === 'No firmware found to update') {
+    if (error.message === "No firmware found to update") {
       return res.status(404).json({
         success: false,
-        message: "No firmware found to update"
+        message: "No firmware found to update",
       });
     }
 
@@ -815,25 +812,25 @@ const setLatestFirmware = async (req, res) => {
   }
 };
 
-
 const deleteFirmware = async (req, res) => {
   try {
     const { id } = req.params;
 
-
     const firmware = await Firmware.findOne({
       where: { id },
-      paranoid: false // This includes soft-deleted records
+      paranoid: false, // This includes soft-deleted records
     });
 
     if (!firmware) {
       return res.status(404).json({
         success: false,
-        message: "Firmware not found"
+        message: "Firmware not found",
       });
     }
 
-    console.log(`Starting deletion process for firmware ID: ${id}, Version: ${firmware.version}`);
+    console.log(
+      `Starting deletion process for firmware ID: ${id}, Version: ${firmware.version}`
+    );
 
     let filesDeleted = [];
     let deletionErrors = [];
@@ -845,10 +842,13 @@ const deleteFirmware = async (req, res) => {
         filesDeleted.push(firmware.filePath);
         console.log(`Deleted original file: ${firmware.filePath}`);
       } catch (error) {
-        console.error(`Error deleting original file ${firmware.filePath}:`, error);
+        console.error(
+          `Error deleting original file ${firmware.filePath}:`,
+          error
+        );
         deletionErrors.push({
           file: firmware.filePath,
-          error: error.message
+          error: error.message,
         });
       }
     }
@@ -860,7 +860,7 @@ const deleteFirmware = async (req, res) => {
         const deleteDirectory = (dirPath) => {
           const items = fs.readdirSync(dirPath);
 
-          items.forEach(item => {
+          items.forEach((item) => {
             const itemPath = path.join(dirPath, item);
             const stats = fs.statSync(itemPath);
 
@@ -879,10 +879,13 @@ const deleteFirmware = async (req, res) => {
         filesDeleted.push(firmware.extractPath + " (directory)");
         console.log(`Deleted extracted directory: ${firmware.extractPath}`);
       } catch (error) {
-        console.error(`Error deleting extracted directory ${firmware.extractPath}:`, error);
+        console.error(
+          `Error deleting extracted directory ${firmware.extractPath}:`,
+          error
+        );
         deletionErrors.push({
           file: firmware.extractPath,
-          error: error.message
+          error: error.message,
         });
       }
     }
@@ -896,10 +899,10 @@ const deleteFirmware = async (req, res) => {
           where: {
             id: { [Op.ne]: firmware.id }, // Exclude current firmware
             deletedAt: null,
-            ...(firmware.deviceType && { deviceType: firmware.deviceType })
+            ...(firmware.deviceType && { deviceType: firmware.deviceType }),
           },
-          order: [['uploadedAt', 'DESC']],
-          paranoid: true // Only non-deleted records
+          order: [["uploadedAt", "DESC"]],
+          paranoid: true, // Only non-deleted records
         });
 
         if (nextLatest) {
@@ -907,7 +910,7 @@ const deleteFirmware = async (req, res) => {
           newLatestSet = {
             id: nextLatest.id,
             version: nextLatest.version,
-            fileName: nextLatest.fileName
+            fileName: nextLatest.fileName,
           };
           console.log(`Set new latest firmware: ${nextLatest.version}`);
         }
@@ -915,7 +918,7 @@ const deleteFirmware = async (req, res) => {
         console.error("Error setting new latest firmware:", error);
         deletionErrors.push({
           operation: "setting new latest firmware",
-          error: error.message
+          error: error.message,
         });
       }
     }
@@ -923,7 +926,9 @@ const deleteFirmware = async (req, res) => {
     // Permanently delete the firmware record from database (hard delete)
     await firmware.destroy({ force: true }); // force: true ensures hard delete even with paranoid mode
 
-    console.log(`Successfully deleted firmware record from database: ${firmware.version}`);
+    console.log(
+      `Successfully deleted firmware record from database: ${firmware.version}`
+    );
 
     return res.status(200).json({
       success: true,
@@ -933,7 +938,7 @@ const deleteFirmware = async (req, res) => {
           id: firmware.id,
           version: firmware.version,
           fileName: firmware.fileName,
-          deviceType: firmware.deviceType
+          deviceType: firmware.deviceType,
         },
         filesDeleted: filesDeleted,
         deletionErrors: deletionErrors.length > 0 ? deletionErrors : null,
@@ -942,17 +947,16 @@ const deleteFirmware = async (req, res) => {
           totalFilesDeleted: filesDeleted.length,
           hasErrors: deletionErrors.length > 0,
           wasLatest: firmware.isLatest,
-          newLatestSet: !!newLatestSet
-        }
-      }
+          newLatestSet: !!newLatestSet,
+        },
+      },
     });
-
   } catch (error) {
     console.error("Error deleting firmware:", error);
     return res.status(500).json({
       success: false,
       message: "Error deleting firmware",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -970,5 +974,5 @@ module.exports = {
   listExtractedFiles,
   getFirmwareByVersion,
   setLatestFirmware,
-  deleteFirmware
+  deleteFirmware,
 };
