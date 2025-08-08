@@ -897,46 +897,33 @@ class ProjectController {
     }
   }
   async searchProjects(req, res) {
-    console.log("=== SEARCH CONTROLLER DEBUG START ===");
     console.log("Search query parameters:", req.query);
     console.log("Request path:", req.path);
-    console.log(
-      "User object:",
-      req.user ? { id: req.user.id, role: req.user.role } : "NO USER"
-    );
-
     try {
       const {
         keyword,
         componentId,
         projectName,
-        projectId,
+        projectId, // This now searches the custom projectId field
         categoryId,
         difficulty,
         projectType,
         page = 1,
         limit = 10,
       } = req.query;
-
-      const userRole = req.user?.role || null;
-      console.log("Extracted userRole:", userRole);
-
-      const searchParams = {
-        keyword,
-        componentId,
-        projectName,
-        projectId,
-        categoryId,
-        difficulty,
-        projectType,
-      };
-
-      console.log("Search parameters being passed to service:", searchParams);
-      console.log("=== SEARCH CONTROLLER DEBUG END ===");
+      const userRole = req.user.role;
 
       // Use the service layer
       const result = await ProjectService.searchProjects(
-        searchParams,
+        {
+          keyword,
+          componentId,
+          projectName,
+          projectId, // Custom projectId search
+          categoryId,
+          difficulty,
+          projectType,
+        },
         { page, limit },
         userRole
       );

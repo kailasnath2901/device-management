@@ -881,78 +881,7 @@ class ProjectService {
     }
   }
 
-  // CONTROLLER WITH DEBUGGING
-  async searchProjects(req, res) {
-    console.log("=== SEARCH CONTROLLER DEBUG START ===");
-    console.log("Search query parameters:", req.query);
-    console.log("Request path:", req.path);
-    console.log(
-      "User object:",
-      req.user ? { id: req.user.id, role: req.user.role } : "NO USER"
-    );
-
-    try {
-      const {
-        keyword,
-        componentId,
-        projectName,
-        projectId,
-        categoryId,
-        difficulty,
-        projectType,
-        page = 1,
-        limit = 10,
-      } = req.query;
-
-      const userRole = req.user?.role || null;
-      console.log("Extracted userRole:", userRole);
-
-      const searchParams = {
-        keyword,
-        componentId,
-        projectName,
-        projectId,
-        categoryId,
-        difficulty,
-        projectType,
-      };
-
-      console.log("Search parameters being passed to service:", searchParams);
-      console.log("=== SEARCH CONTROLLER DEBUG END ===");
-
-      // Use the service layer
-      const result = await ProjectService.searchProjects(
-        searchParams,
-        { page, limit },
-        userRole
-      );
-
-      return res.status(200).json({
-        success: true,
-        projects: result.projects,
-        pagination: {
-          currentPage: result.currentPage,
-          totalPages: result.totalPages,
-          totalProjects: result.totalProjects,
-          limit: parseInt(limit),
-        },
-      });
-    } catch (error) {
-      console.error("Error searching projects:", error);
-      return res.status(500).json({
-        success: false,
-        message: error.message,
-      });
-    }
-  }
-
-  // SERVICE WITH COMPREHENSIVE DEBUGGING
   async searchProjects(searchParams, options = {}, userRole = null) {
-    console.log("=== SERVICE SEARCH DEBUG START ===");
-    console.log("Service received searchParams:", searchParams);
-    console.log("Service received options:", options);
-    console.log("Service received userRole:", userRole);
-
     const { page = 1, limit = 10 } = options;
     const {
       keyword,
@@ -963,9 +892,6 @@ class ProjectService {
       difficulty,
       projectType,
     } = searchParams;
-
-    console.log("Extracted projectId:", projectId);
-
     const offset = (page - 1) * limit;
 
     let whereCondition = {
@@ -973,13 +899,11 @@ class ProjectService {
     };
 
     // Apply version type filter based on user role
+    // Regular users can only see "release" versions
+    // Admins/super_admins/testers can see ALL versions
     if (!userRole || !["admin", "super_admin", "tester"].includes(userRole)) {
-      console.log(
-        "🔒 RESTRICTING to release versions (userRole not privileged)"
-      );
       whereCondition.versionType = "release";
     } else {
-      console.log("🔓 SHOWING all versions (userRole is privileged)");
     }
 
     let includeConditions = [
@@ -1013,40 +937,41 @@ class ProjectService {
     ];
 
     if (projectId) {
-      console.log("🎯 Adding EXACT projectId match:", projectId);
       whereCondition.projectId = projectId;
     }
 
+    // Search by project name
     if (projectName) {
-      console.log("📝 Adding projectName search:", projectName);
       whereCondition.name = {
         [Op.like]: `%${projectName}%`,
       };
     }
 
+    // Search by category
     if (categoryId) {
-      console.log("🏷️ Adding categoryId filter:", categoryId);
       whereCondition.category_id = categoryId;
     }
 
+    // Search by difficulty
     if (difficulty) {
-      console.log("⭐ Adding difficulty filter:", difficulty);
       whereCondition.difficulty = difficulty;
     }
 
+    // Search by project type
     if (projectType) {
-      console.log("💰 Adding projectType filter:", projectType);
       whereCondition.project_type = projectType;
     }
 
-    // Only do keyword search if no specific projectId
-    if (keyword && !projectId) {
-      console.log("🔍 Adding keyword search:", keyword);
+    // Search by keywords - Final working version
+    if (keyword) {
       whereCondition[Op.or] = [
+        // Use model attribute names (not table column names)
         { name: { [Op.like]: `%${keyword}%` } },
         { description: { [Op.like]: `%${keyword}%` } },
-        { projectId: { [Op.like]: `%${keyword}%` } },
+        { projectId: { [Op.like]: `%${keyword}%` } }, // Also search in custom projectId
+        // For JSON search in MySQL
         sequelize.literal(`JSON_CONTAINS(keywords_list, '"${keyword}"')`),
+        // Use field mappings for underscored columns
         sequelize.where(sequelize.col("what_it_is"), {
           [Op.like]: `%${keyword}%`,
         }),
@@ -1054,12 +979,10 @@ class ProjectService {
           [Op.like]: `%${keyword}%`,
         }),
       ];
-    } else if (keyword && projectId) {
-      console.log("⚠️ Skipping keyword search because projectId is specified");
     }
 
+    // Search by component
     if (componentId) {
-      console.log("🔧 Adding componentId filter:", componentId);
       includeConditions[3].where = {
         ...includeConditions[3].where,
         id: componentId,
@@ -1067,82 +990,7 @@ class ProjectService {
       includeConditions[3].required = true;
     }
 
-    console.log(
-      "📋 FINAL WHERE CONDITION:",
-      JSON.stringify(whereCondition, null, 2)
-    );
-
     try {
-      // STEP 1: Let's check if the project exists with minimal conditions
-      console.log("🔍 Step 1: Basic project existence check...");
-      const basicProject = await Project.findOne({
-        where: { projectId: projectId },
-        attributes: ["id", "projectId", "name", "versionType", "deleted_at"],
-      });
-
-      if (basicProject) {
-        console.log("✅ Project exists in database:", basicProject.toJSON());
-      } else {
-        console.log(
-          "❌ Project NOT found in database with projectId:",
-          projectId
-        );
-      }
-
-      // STEP 2: Check with deleted_at filter
-      console.log("🔍 Step 2: Check with deleted_at filter...");
-      const notDeletedProject = await Project.findOne({
-        where: {
-          projectId: projectId,
-          deleted_at: null,
-        },
-        attributes: ["id", "projectId", "name", "versionType", "deleted_at"],
-      });
-
-      if (notDeletedProject) {
-        console.log(
-          "✅ Project exists and not deleted:",
-          notDeletedProject.toJSON()
-        );
-      } else {
-        console.log("❌ Project not found or is deleted");
-      }
-
-      // STEP 3: Check with version type filter
-      if (whereCondition.versionType) {
-        console.log("🔍 Step 3: Check with versionType filter...");
-        const versionFilteredProject = await Project.findOne({
-          where: {
-            projectId: projectId,
-            deleted_at: null,
-            versionType: whereCondition.versionType,
-          },
-          attributes: ["id", "projectId", "name", "versionType", "deleted_at"],
-        });
-
-        if (versionFilteredProject) {
-          console.log(
-            "✅ Project passes version filter:",
-            versionFilteredProject.toJSON()
-          );
-        } else {
-          console.log(
-            "❌ Project filtered out by versionType:",
-            whereCondition.versionType
-          );
-          if (basicProject) {
-            console.log(
-              "💡 Project has versionType:",
-              basicProject.versionType,
-              "but filter requires:",
-              whereCondition.versionType
-            );
-          }
-        }
-      }
-
-      // STEP 4: Final query
-      console.log("🔍 Step 4: Executing final query...");
       const { count, rows } = await Project.findAndCountAll({
         where: whereCondition,
         include: includeConditions,
@@ -1151,11 +999,6 @@ class ProjectService {
         order: [["created_at", "DESC"]],
         distinct: true,
       });
-
-      console.log("📊 QUERY RESULTS:");
-      console.log("- Total count:", count);
-      console.log("- Rows returned:", rows.length);
-      console.log("=== SERVICE SEARCH DEBUG END ===");
 
       const projectsWithImageUrls = rows.map((project) => {
         const projectData = project.toJSON();
@@ -1172,7 +1015,7 @@ class ProjectService {
         currentPage: parseInt(page, 10),
       };
     } catch (error) {
-      console.error("❌ Search error:", {
+      console.error("Search error:", {
         message: error.message,
         sql: error.sql,
         stack: error.stack,
