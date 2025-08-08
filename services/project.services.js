@@ -899,7 +899,7 @@ class ProjectService {
     };
 
     // Apply version type filter based on user role
-    if (!userRole || !["admin", "super_admin", "tester"].includes(userRole)) {
+    if (!["admin", "super_admin", "tester"].includes(userRole)) {
       whereCondition.versionType = "release";
     }
 
