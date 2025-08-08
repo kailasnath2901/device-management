@@ -881,7 +881,7 @@ class ProjectService {
     }
   }
 
-  async searchProjects(searchParams, options = {}) {
+  async searchProjects(searchParams, options = {}, userRole = null) {
     const { page = 1, limit = 10 } = options;
     const {
       keyword,
