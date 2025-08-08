@@ -1,4 +1,5 @@
 const Firmware = require("../model/file-firmware.model");
+const Device = require("../model/user-device.model"); // Import Device model
 const fs = require("fs");
 const path = require("path");
 const { Op } = require("sequelize");
@@ -48,7 +49,36 @@ const extractZipFile = async (zipPath, extractToPath, version) => {
   }
 };
 
-// Upload multiple firmware files with improved handling
+// Helper function to update devices when firmware is uploaded
+const updateDevicesForNewFirmware = async (deviceType, version) => {
+  try {
+    if (!deviceType) {
+      console.log("No deviceType specified, skipping device updates");
+      return { updatedCount: 0 };
+    }
+
+    // Update all devices of this deviceType to have updateAvailable = true
+    const [updatedCount] = await Device.update(
+      { updateAvailable: true },
+      {
+        where: {
+          deviceType: deviceType,
+        },
+      }
+    );
+
+    console.log(
+      `Updated ${updatedCount} devices of type '${deviceType}' to have update available`
+    );
+
+    return { updatedCount, deviceType, version };
+  } catch (error) {
+    console.error("Error updating devices for new firmware:", error);
+    throw error;
+  }
+};
+
+// Upload multiple firmware files with improved handling and device update logic
 const uploadFirmware = async (req, res) => {
   try {
     let allFiles = [];
@@ -172,16 +202,223 @@ const uploadFirmware = async (req, res) => {
       });
     }
 
+    // Update all devices of the specified deviceType to have updateAvailable = true
+    let deviceUpdateResult = { updatedCount: 0 };
+    if (deviceType) {
+      try {
+        deviceUpdateResult = await updateDevicesForNewFirmware(
+          deviceType,
+          version
+        );
+      } catch (error) {
+        console.error("Failed to update devices:", error);
+        // Don't fail the entire operation if device update fails
+      }
+    }
+
     return res.status(201).json({
       success: true,
       message: `${firmwareEntries.length} firmware files uploaded successfully`,
       data: firmwareEntries,
+      deviceUpdates: {
+        devicesUpdated: deviceUpdateResult.updatedCount,
+        deviceType: deviceType,
+        message: deviceType
+          ? `${deviceUpdateResult.updatedCount} devices of type '${deviceType}' marked as having updates available`
+          : "No deviceType specified, no devices updated",
+      },
     });
   } catch (error) {
     console.error("Error uploading firmware:", error);
     return res.status(500).json({
       success: false,
       message: "Error uploading firmware",
+      error: error.message,
+    });
+  }
+};
+
+// New API: Mark devices as having update available by deviceType
+const markDevicesUpdateAvailable = async (req, res) => {
+  try {
+    const { deviceType, serialNumbers } = req.body;
+
+    if (!deviceType && (!serialNumbers || serialNumbers.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "Either deviceType or serialNumbers array is required",
+      });
+    }
+
+    let whereClause = {};
+
+    if (serialNumbers && serialNumbers.length > 0) {
+      // Update specific devices by serial numbers
+      whereClause.serialNumber = { [Op.in]: serialNumbers };
+      if (deviceType) {
+        whereClause.deviceType = deviceType;
+      }
+    } else {
+      // Update all devices of a specific type
+      whereClause.deviceType = deviceType;
+    }
+
+    const [updatedCount] = await Device.update(
+      { updateAvailable: true },
+      { where: whereClause }
+    );
+
+    const updatedDevices = await Device.findAll({
+      where: whereClause,
+      attributes: [
+        "id",
+        "serialNumber",
+        "deviceType",
+        "deviceName",
+        "updateAvailable",
+      ],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `${updatedCount} devices marked as having updates available`,
+      data: {
+        updatedCount,
+        deviceType,
+        serialNumbers,
+        updatedDevices,
+      },
+    });
+  } catch (error) {
+    console.error("Error marking devices as having updates:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error marking devices as having updates",
+      error: error.message,
+    });
+  }
+};
+
+// New API: Clear update available flag for devices
+const clearDevicesUpdateAvailable = async (req, res) => {
+  try {
+    const { deviceType, serialNumbers } = req.body;
+
+    if (!deviceType && (!serialNumbers || serialNumbers.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "Either deviceType or serialNumbers array is required",
+      });
+    }
+
+    let whereClause = {};
+
+    if (serialNumbers && serialNumbers.length > 0) {
+      // Clear specific devices by serial numbers
+      whereClause.serialNumber = { [Op.in]: serialNumbers };
+      if (deviceType) {
+        whereClause.deviceType = deviceType;
+      }
+    } else {
+      // Clear all devices of a specific type
+      whereClause.deviceType = deviceType;
+    }
+
+    const [updatedCount] = await Device.update(
+      { updateAvailable: false },
+      { where: whereClause }
+    );
+
+    const updatedDevices = await Device.findAll({
+      where: whereClause,
+      attributes: [
+        "id",
+        "serialNumber",
+        "deviceType",
+        "deviceName",
+        "updateAvailable",
+      ],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `${updatedCount} devices cleared of update available flag`,
+      data: {
+        updatedCount,
+        deviceType,
+        serialNumbers,
+        updatedDevices,
+      },
+    });
+  } catch (error) {
+    console.error("Error clearing device update flags:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error clearing device update flags",
+      error: error.message,
+    });
+  }
+};
+
+// New API: Get devices with update available
+const getDevicesWithUpdateAvailable = async (req, res) => {
+  try {
+    const { deviceType, userId } = req.query;
+
+    let whereClause = { updateAvailable: true };
+
+    if (deviceType) {
+      whereClause.deviceType = deviceType;
+    }
+
+    if (userId) {
+      whereClause.userId = userId;
+    }
+
+    const devices = await Device.findAll({
+      where: whereClause,
+      attributes: [
+        "id",
+        "serialNumber",
+        "deviceType",
+        "deviceName",
+        "nickName",
+        "firmwareVersion",
+        "updateAvailable",
+        "userId",
+      ],
+      order: [
+        ["deviceType", "ASC"],
+        ["deviceName", "ASC"],
+      ],
+    });
+
+    const devicesByType = devices.reduce((acc, device) => {
+      const type = device.deviceType;
+      if (!acc[type]) {
+        acc[type] = [];
+      }
+      acc[type].push(device);
+      return acc;
+    }, {});
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        devices,
+        devicesByType,
+        totalCount: devices.length,
+        summary: Object.keys(devicesByType).map((type) => ({
+          deviceType: type,
+          count: devicesByType[type].length,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Error getting devices with updates available:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error getting devices with updates available",
       error: error.message,
     });
   }

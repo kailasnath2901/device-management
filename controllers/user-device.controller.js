@@ -311,6 +311,227 @@ class DeviceController {
       });
     }
   }
+
+  async updateDeviceNickname(req, res) {
+  try {
+    const { serialNumber } = req.params;
+    const { nickName } = req.body;
+    const userId = req.user.id;
+
+    if (!nickName) {
+      return res.status(400).json({
+        success: false,
+        message: "Nickname is required",
+      });
+    }
+
+    const device = await DeviceService.updateDeviceNicknameBySerial(
+      serialNumber,
+      userId,
+      nickName
+    );
+
+    res.json({
+      success: true,
+      message: "Device nickname updated successfully",
+      device: {
+        id: device.id,
+        serialNumber: device.serialNumber,
+        deviceName: device.deviceName,
+        nickName: device.nickName,
+        lastUpdated: device.lastUpdated
+      }
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+// Mark devices as having updates available
+async markDevicesUpdateAvailable(req, res) {
+  try {
+    const { deviceType, serialNumbers } = req.body;
+
+    // Only admins can manage update flags
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can manage device updates",
+      });
+    }
+
+    if (!deviceType && (!serialNumbers || serialNumbers.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "Either deviceType or serialNumbers array must be provided",
+      });
+    }
+
+    const result = await DeviceService.markDevicesUpdateAvailable(
+      deviceType,
+      serialNumbers
+    );
+
+    res.json({
+      success: true,
+      message: `${result.updatedCount} devices marked as having updates available`,
+      data: result
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+// Clear update available flags
+async clearDevicesUpdateAvailable(req, res) {
+  try {
+    const { deviceType, serialNumbers } = req.body;
+
+    // Only admins can manage update flags
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can manage device updates",
+      });
+    }
+
+    if (!deviceType && (!serialNumbers || serialNumbers.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "Either deviceType or serialNumbers array must be provided",
+      });
+    }
+
+    const result = await DeviceService.clearDevicesUpdateAvailable(
+      deviceType,
+      serialNumbers
+    );
+
+    res.json({
+      success: true,
+      message: `${result.updatedCount} devices update flags cleared`,
+      data: result
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+// Get devices with updates available
+async getDevicesWithUpdateAvailable(req, res) {
+  try {
+    const { deviceType, userId } = req.query;
+
+    // Only admins can see all devices with updates, users can only see their own
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      if (userId && userId !== req.user.id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only view your own devices",
+        });
+      }
+    }
+
+    const finalUserId = req.user.role === "admin" || req.user.role === "super_admin" 
+      ? userId 
+      : req.user.id;
+
+    const devices = await DeviceService.getDevicesWithUpdateAvailable(
+      deviceType,
+      finalUserId
+    );
+
+    res.json({
+      success: true,
+      devices,
+      total: devices.length
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+// Update single device update flag
+async updateDeviceUpdateFlag(req, res) {
+  try {
+    const { serialNumber } = req.params;
+    const { updateAvailable } = req.body;
+
+    // Only admins can manage update flags
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can manage device updates",
+      });
+    }
+
+    if (updateAvailable === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "updateAvailable field is required (true/false)",
+      });
+    }
+
+    const device = await DeviceService.updateDeviceUpdateFlag(
+      serialNumber,
+      updateAvailable
+    );
+
+    res.json({
+      success: true,
+      message: `Device update flag ${updateAvailable ? 'set' : 'cleared'} successfully`,
+      device: {
+        id: device.id,
+        serialNumber: device.serialNumber,
+        updateAvailable: device.updateAvailable,
+        lastUpdated: device.lastUpdated
+      }
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+// Get device statistics
+async getDeviceStats(req, res) {
+  try {
+    // Only admins can view device statistics
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can view device statistics",
+      });
+    }
+
+    const stats = await DeviceService.getDeviceStats();
+
+    res.json({
+      success: true,
+      stats
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
   //!--------------------------------------------
 }
 

@@ -42,6 +42,10 @@ const Device = sequelize.define(
       type: DataTypes.STRING,
       defaultValue: "Ninja",
     },
+     updateAvailable: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
     lastUpdated: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,

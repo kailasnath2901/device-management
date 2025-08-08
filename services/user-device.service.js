@@ -22,6 +22,7 @@ class DeviceService {
       const device = await Device.create({
         ...deviceData,
         userId: null,
+        updateAvailable: false, // Set initial value
       });
 
       return device;
@@ -98,6 +99,7 @@ class DeviceService {
         deviceType: device.deviceType,
         serialNumber: device.serialNumber,
         firmwareVersion: device.firmwareVersion,
+        updateAvailable: device.updateAvailable,
         lastUpdated: device.lastUpdated,
         createdAt: device.createdAt,
         isClaimed: !!device.userId,
@@ -188,7 +190,7 @@ class DeviceService {
     try {
       const page = Math.max(1, parseInt(options.page) || 1);
       const limit = Math.max(1, parseInt(options.limit) || 10);
-      const { search, deviceType, userId, onlyUnassigned } = options;
+      const { search, deviceType, userId, onlyUnassigned, updateAvailable } = options;
 
       const whereConditions = {};
 
@@ -209,6 +211,10 @@ class DeviceService {
 
       if (onlyUnassigned) {
         whereConditions.userId = null;
+      }
+
+      if (updateAvailable !== undefined) {
+        whereConditions.updateAvailable = updateAvailable === 'true';
       }
 
       const offset = (page - 1) * limit;
@@ -243,6 +249,11 @@ class DeviceService {
     try {
       const devices = await Device.findAll({
         where: { userId },
+        attributes: [
+          'id', 'deviceName', 'deviceType', 'serialNumber', 
+          'firmwareVersion', 'nickName', 'updateAvailable', 
+          'isModified', 'lastUpdated', 'createdAt'
+        ]
       });
 
       return devices;
@@ -363,14 +374,15 @@ class DeviceService {
         device.isModified = false;
         await device.save();
       }
-      // Return device info with claim status
+      // Return device info with modification and update status
       return {
         id: device.id,
         serialNumber: device.serialNumber,
         isModified: device.isModified,
+        updateAvailable: device.updateAvailable,
       };
     } catch (error) {
-      throw new Error(`Error fetching device-: ${error.message}`);
+      throw new Error(`Error fetching device: ${error.message}`);
     }
   }
 
@@ -410,6 +422,147 @@ class DeviceService {
       return device;
     } catch (error) {
       throw new Error(`Failed to update device nickname: ${error.message}`);
+    }
+  }
+
+  // New methods for update availability management
+  async markDevicesUpdateAvailable(deviceType, serialNumbers = null) {
+    try {
+      let whereClause = {};
+      
+      if (serialNumbers && serialNumbers.length > 0) {
+        whereClause.serialNumber = { [Op.in]: serialNumbers };
+        if (deviceType) {
+          whereClause.deviceType = deviceType;
+        }
+      } else if (deviceType) {
+        whereClause.deviceType = deviceType;
+      } else {
+        throw new Error("Either deviceType or serialNumbers must be provided");
+      }
+
+      const [updatedCount] = await Device.update(
+        { updateAvailable: true },
+        { where: whereClause }
+      );
+
+      return { updatedCount, deviceType, serialNumbers };
+    } catch (error) {
+      throw new Error(`Error marking devices as having updates: ${error.message}`);
+    }
+  }
+
+  async clearDevicesUpdateAvailable(deviceType, serialNumbers = null) {
+    try {
+      let whereClause = {};
+      
+      if (serialNumbers && serialNumbers.length > 0) {
+        whereClause.serialNumber = { [Op.in]: serialNumbers };
+        if (deviceType) {
+          whereClause.deviceType = deviceType;
+        }
+      } else if (deviceType) {
+        whereClause.deviceType = deviceType;
+      } else {
+        throw new Error("Either deviceType or serialNumbers must be provided");
+      }
+
+      const [updatedCount] = await Device.update(
+        { updateAvailable: false },
+        { where: whereClause }
+      );
+
+      return { updatedCount, deviceType, serialNumbers };
+    } catch (error) {
+      throw new Error(`Error clearing device update flags: ${error.message}`);
+    }
+  }
+
+  async getDevicesWithUpdateAvailable(deviceType = null, userId = null) {
+    try {
+      let whereClause = { updateAvailable: true };
+      
+      if (deviceType) {
+        whereClause.deviceType = deviceType;
+      }
+      
+      if (userId) {
+        whereClause.userId = userId;
+      }
+
+      const devices = await Device.findAll({
+        where: whereClause,
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "username", "email"],
+            required: false,
+          },
+        ],
+        attributes: [
+          'id', 'serialNumber', 'deviceType', 'deviceName', 
+          'nickName', 'firmwareVersion', 'updateAvailable', 'userId'
+        ],
+        order: [['deviceType', 'ASC'], ['deviceName', 'ASC']]
+      });
+
+      return devices;
+    } catch (error) {
+      throw new Error(`Error fetching devices with updates: ${error.message}`);
+    }
+  }
+
+  async updateDeviceUpdateFlag(serialNumber, updateAvailable) {
+    try {
+      const device = await Device.findOne({
+        where: { serialNumber }
+      });
+
+      if (!device) {
+        throw new Error("Device not found with the provided serial number");
+      }
+
+      device.updateAvailable = updateAvailable;
+      device.lastUpdated = new Date();
+      await device.save();
+
+      return device;
+    } catch (error) {
+      throw new Error(`Error updating device update flag: ${error.message}`);
+    }
+  }
+
+  // Get device statistics including update counts
+  async getDeviceStats() {
+    try {
+      const totalDevices = await Device.count();
+      const claimedDevices = await Device.count({
+        where: { userId: { [Op.ne]: null } }
+      });
+      const devicesWithUpdates = await Device.count({
+        where: { updateAvailable: true }
+      });
+
+      const devicesByType = await Device.findAll({
+        attributes: [
+          'deviceType',
+          [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+          [sequelize.fn('SUM', sequelize.literal('CASE WHEN update_available = true THEN 1 ELSE 0 END')), 'updatesAvailable']
+        ],
+        group: ['deviceType'],
+        raw: true
+      });
+
+      return {
+        totalDevices,
+        claimedDevices,
+        unclaimedDevices: totalDevices - claimedDevices,
+        devicesWithUpdates,
+        devicesByType
+      };
+    } catch (error) {
+      throw new Error(`Error fetching device stats: ${error.message}`);
     }
   }
 }
