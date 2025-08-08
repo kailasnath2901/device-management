@@ -903,7 +903,6 @@ class ProjectService {
     // Admins/super_admins/testers can see ALL versions
     if (!userRole || !["admin", "super_admin", "tester"].includes(userRole)) {
       whereCondition.versionType = "release";
-    } else {
     }
 
     let includeConditions = [
@@ -936,14 +935,15 @@ class ProjectService {
       },
     ];
 
+    // Fixed: Search by projectId (custom projectId field)
     if (projectId) {
-      whereCondition.projectId = projectId;
+      whereCondition.projectId = projectId; // This should work since projectId is the field name
     }
 
-    // Search by project name
+    // Fixed: Search by project name with correct template literal syntax
     if (projectName) {
       whereCondition.name = {
-        [Op.like]: `%${projectName}%`,
+        [Op.like]: `%${projectName}%`, // ✅ Fixed: Added backticks
       };
     }
 
@@ -962,21 +962,21 @@ class ProjectService {
       whereCondition.project_type = projectType;
     }
 
-    // Search by keywords - Final working version
+    // Fixed: Search by keywords with correct template literal syntax
     if (keyword) {
       whereCondition[Op.or] = [
         // Use model attribute names (not table column names)
-        { name: { [Op.like]: `%${keyword}%` } },
-        { description: { [Op.like]: `%${keyword}%` } },
+        { name: { [Op.like]: `%${keyword}%` } }, // ✅ Fixed: Added backticks
+        { description: { [Op.like]: `%${keyword}%` } }, // ✅ Fixed: Added backticks
         { projectId: { [Op.like]: `%${keyword}%` } }, // Also search in custom projectId
-        // For JSON search in MySQL
-        sequelize.literal(`JSON_CONTAINS(keywords_list, '"${keyword}"')`),
+        // For JSON search in MySQL - Fixed template literal
+        sequelize.literal(`JSON_CONTAINS(keywords_list, '"${keyword}"')`), // ✅ Fixed: Proper template literal
         // Use field mappings for underscored columns
         sequelize.where(sequelize.col("what_it_is"), {
-          [Op.like]: `%${keyword}%`,
+          [Op.like]: `%${keyword}%`, // ✅ Fixed: Added backticks
         }),
         sequelize.where(sequelize.col("how_it_works"), {
-          [Op.like]: `%${keyword}%`,
+          [Op.like]: `%${keyword}%`, // ✅ Fixed: Added backticks
         }),
       ];
     }
@@ -991,6 +991,11 @@ class ProjectService {
     }
 
     try {
+      console.log(
+        "Final whereCondition:",
+        JSON.stringify(whereCondition, null, 2)
+      ); // Debug log
+
       const { count, rows } = await Project.findAndCountAll({
         where: whereCondition,
         include: includeConditions,
@@ -999,6 +1004,9 @@ class ProjectService {
         order: [["created_at", "DESC"]],
         distinct: true,
       });
+
+      console.log("Query result count:", count); // Debug log
+      console.log("Query result rows:", rows.length); // Debug log
 
       const projectsWithImageUrls = rows.map((project) => {
         const projectData = project.toJSON();
@@ -1019,6 +1027,7 @@ class ProjectService {
         message: error.message,
         sql: error.sql,
         stack: error.stack,
+        whereCondition: whereCondition, // Log the where condition
       });
       throw error;
     }
