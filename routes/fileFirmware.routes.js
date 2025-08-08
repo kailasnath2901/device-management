@@ -55,6 +55,12 @@ router.put(
   firmwareController.setAllLatestFirmwareUpdateAvailable
 );
 
+router.get('/admin/available-device-types',
+  authenticate,
+  authorizeRoles('admin', 'super_admin'),
+  firmwareController.getAvailableDeviceTypes
+);
+
 router.delete(
   "/delete/:id",
   authenticate,
