@@ -833,7 +833,7 @@ class ProjectService {
     const offset = (page - 1) * limit;
 
     let whereCondition = {
-      deleted_at: null, // Explicitly filter out soft-deleted projects
+      deleted_at: null,
       versionType: "release", // Only show release version projects
     };
 
@@ -867,11 +867,8 @@ class ProjectService {
       },
     ];
 
-    // Search by custom projectId (not the primary key id)
     if (projectId) {
-      whereCondition.projectId = {
-        [Op.like]: `%${projectId}%`,
-      };
+      whereCondition.projectId = projectId;
     }
 
     // Search by project name
