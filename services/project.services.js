@@ -901,38 +901,24 @@ class ProjectService {
       hasRemovalOccurred: false,
     };
 
-    // Build device include clause based on filter type
+    // Build device include clause
     const deviceInclude = {
       model: Device,
       as: "device",
       required: false,
+      // Only return essential device attributes
+      attributes: ["id", "deviceName", "serialNumber"],
     };
 
-    // Set device attributes based on filter type
+    // Set device filter conditions
     if (serialNumber) {
-      // When filtering by serial number, return limited device info
-      deviceInclude.attributes = ["id", "deviceName", "serialNumber"];
       deviceInclude.where = {
         serialNumber: serialNumber,
       };
       deviceInclude.required = true; // Make it an INNER JOIN when filtering by serial number
-    } else {
-      // When filtering by deviceId or no filter, return full device info
-      deviceInclude.attributes = [
-        "id",
-        "deviceName",
-        "serialNumber",
-        "deviceType",
-        "firmwareVersion",
-        "isModified",
-        "nickName",
-        "lastUpdated",
-      ];
-
+    } else if (deviceId) {
       // If filtering by deviceId, add it to the main where clause
-      if (deviceId) {
-        whereClause.deviceId = deviceId;
-      }
+      whereClause.deviceId = deviceId;
     }
 
     const { count, rows } = await UserProjectAcquisition.findAndCountAll({
@@ -942,32 +928,8 @@ class ProjectService {
         {
           model: Project,
           as: "project",
-          attributes: serialNumber
-            ? // Limited project attributes when filtering by serial number
-              ["id", "name"]
-            : // Full project attributes when filtering by deviceId or no filter
-              [
-                "id",
-                "projectId",
-                "name",
-                "description",
-                "whatItIs",
-                "howItWorks",
-                "priceInInr",
-                "keywordsList",
-                "difficulty",
-                "categoryId",
-                "testAndTroubleshootLink",
-                "versionType",
-                "youtubeLink",
-                "projectType",
-                "maxAcquisitions",
-                "version",
-                "lastUpdated",
-                "dashboard",
-                "createdAt",
-                "updatedAt",
-              ],
+          // Only return essential project attributes
+          attributes: ["id", "name"],
           include: [
             {
               model: ProjectFile,
@@ -992,11 +954,11 @@ class ProjectService {
       col: "id",
     });
 
-    // Transform the response to match the expected format
-    const projectsWithImageUrls = rows.map((acquisition) => {
+    // Transform the response to match the required minimal format
+    const projectsWithMinimalData = rows.map((acquisition) => {
       const acquisitionData = acquisition.toJSON();
 
-      // Transform images to the expected format (array of URL strings)
+      // Transform images to URL strings
       let imageUrls = [];
       if (acquisitionData.project && acquisitionData.project.images) {
         imageUrls = acquisitionData.project.images.map(
@@ -1005,68 +967,27 @@ class ProjectService {
         );
       }
 
-      // Return in the expected format
+      // Return only the required minimal data structure
       return {
         id: acquisitionData.id,
-        project: serialNumber
-          ? {
-              // Limited project info when filtering by serial number
-              id: acquisitionData.project.id,
-              name: acquisitionData.project.name,
-              files: acquisitionData.project.files || [],
-              images: imageUrls,
-            }
-          : {
-              // Full project info when filtering by deviceId or no filter
-              id: acquisitionData.project.id,
-              projectId: acquisitionData.project.projectId,
-              name: acquisitionData.project.name,
-              description: acquisitionData.project.description,
-              whatItIs: acquisitionData.project.whatItIs,
-              howItWorks: acquisitionData.project.howItWorks,
-              priceInInr: acquisitionData.project.priceInInr,
-              keywordsList: acquisitionData.project.keywordsList,
-              difficulty: acquisitionData.project.difficulty,
-              categoryId: acquisitionData.project.categoryId,
-              testAndTroubleshootLink:
-                acquisitionData.project.testAndTroubleshootLink,
-              versionType: acquisitionData.project.versionType,
-              youtubeLink: acquisitionData.project.youtubeLink,
-              projectType: acquisitionData.project.projectType,
-              maxAcquisitions: acquisitionData.project.maxAcquisitions,
-              version: acquisitionData.project.version,
-              lastUpdated: acquisitionData.project.lastUpdated,
-              dashboard: acquisitionData.project.dashboard,
-              createdAt: acquisitionData.project.createdAt,
-              updatedAt: acquisitionData.project.updatedAt,
-              files: acquisitionData.project.files || [],
-              images: imageUrls,
-            },
+        project: {
+          id: acquisitionData.project.id,
+          name: acquisitionData.project.name,
+          files: acquisitionData.project.files || [],
+          images: imageUrls,
+        },
         device: acquisitionData.device
-          ? serialNumber
-            ? {
-                // Limited device info when filtering by serial number
-                id: acquisitionData.device.id,
-                deviceName: acquisitionData.device.deviceName,
-                serialNumber: acquisitionData.device.serialNumber,
-              }
-            : {
-                // Full device info when filtering by deviceId or no filter
-                id: acquisitionData.device.id,
-                deviceName: acquisitionData.device.deviceName,
-                serialNumber: acquisitionData.device.serialNumber,
-                deviceType: acquisitionData.device.deviceType,
-                firmwareVersion: acquisitionData.device.firmwareVersion,
-                isModified: acquisitionData.device.isModified,
-                nickName: acquisitionData.device.nickName,
-                lastUpdated: acquisitionData.device.lastUpdated,
-              }
+          ? {
+              id: acquisitionData.device.id,
+              deviceName: acquisitionData.device.deviceName,
+              serialNumber: acquisitionData.device.serialNumber,
+            }
           : null,
       };
     });
 
     return {
-      projects: projectsWithImageUrls,
+      projects: projectsWithMinimalData,
       totalProjectsAcquired: count,
       currentPage: page,
       totalPages: Math.ceil(count / limit),
