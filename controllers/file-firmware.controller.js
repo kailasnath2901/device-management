@@ -3,7 +3,7 @@ const Device = require("../model/user-device.model"); // Import Device model
 const fs = require("fs");
 const path = require("path");
 const { Op } = require("sequelize");
-const sequelize = require("../config/sequelize"); 
+const sequelize = require("../config/sequelize");
 const AdmZip = require("adm-zip");
 
 // Helper function to determine file type
@@ -196,6 +196,22 @@ const uploadFirmware = async (req, res) => {
       }
     }
 
+    // UPDATED: Handle latest firmware logic per device type
+    const shouldSetAsLatest = isLatest === "true" || isLatest === true;
+
+    if (shouldSetAsLatest && deviceType) {
+      // First, set all existing firmware of this device type to not be latest
+      await Firmware.update(
+        { isLatest: false },
+        {
+          where: {
+            deviceType: deviceType,
+            deletedAt: null,
+          },
+        }
+      );
+    }
+
     // Create firmware entries for each file
     const firmwareEntries = [];
     const extractBasePath = path.join(__dirname, "../../firmware_extracted");
@@ -236,7 +252,7 @@ const uploadFirmware = async (req, res) => {
         fileName: file.originalname,
         filePath: originalZipDeleted ? null : filePath,
         extractPath,
-        isLatest: isLatest === "true" || isLatest === true,
+        isLatest: shouldSetAsLatest,
         description: description || null,
         fileSize: file.size,
         deviceType: deviceType || null,
@@ -256,6 +272,8 @@ const uploadFirmware = async (req, res) => {
         isZipExtracted: firmware.isZipExtracted,
         extractPath: firmware.extractPath,
         originalZipDeleted: firmware.originalZipDeleted,
+        isLatest: firmware.isLatest,
+        deviceType: firmware.deviceType,
       });
     }
 
@@ -284,6 +302,10 @@ const uploadFirmware = async (req, res) => {
           ? `${deviceUpdateResult.updatedCount} devices of type '${deviceType}' marked as having updates available`
           : "No deviceType specified, no devices updated",
       },
+      latestFirmwareInfo:
+        shouldSetAsLatest && deviceType
+          ? `Set as latest firmware for device type '${deviceType}'`
+          : "Not set as latest firmware",
     });
   } catch (error) {
     console.error("Error uploading firmware:", error);
@@ -318,7 +340,10 @@ const getAllFirmware = async (req, res) => {
         "originalZipDeleted",
         "firmwareUpdateAvailable",
       ],
-      order: [["version", "DESC"]],
+      order: [
+        ["deviceType", "ASC"],
+        ["version", "DESC"],
+      ],
     });
 
     // Add download URLs to each firmware - ONLY API URLs with auth required
@@ -426,7 +451,7 @@ const listExtractedFiles = async (req, res) => {
   }
 };
 
-// Get latest firmware version with enhanced data
+// UPDATED: Get latest firmware version with device-specific logic
 const getLatestFirmware = async (req, res) => {
   try {
     const deviceType = req.query.deviceType;
@@ -450,20 +475,42 @@ const getLatestFirmware = async (req, res) => {
         "fileType",
         "originalZipDeleted",
         "firmwareUpdateAvailable",
+        "isLatest",
       ],
-      order: [["uploadedAt", "DESC"]],
+      order: [
+        ["deviceType", "ASC"],
+        ["uploadedAt", "DESC"],
+      ],
     });
 
     if (!latestFirmware || latestFirmware.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "No firmware found" });
+      const message = deviceType
+        ? `No latest firmware found for device type '${deviceType}'`
+        : "No latest firmware found";
+
+      return res.status(404).json({
+        success: false,
+        message: message,
+        deviceType: deviceType || null,
+      });
     }
+
+    // Group by device type for better organization
+    const firmwareByDeviceType = {};
+    latestFirmware.forEach((fw) => {
+      const type = fw.deviceType || "unspecified";
+      if (!firmwareByDeviceType[type]) {
+        firmwareByDeviceType[type] = [];
+      }
+      firmwareByDeviceType[type].push(fw);
+    });
 
     return res.status(200).json({
       success: true,
       data: latestFirmware,
+      groupedByDeviceType: firmwareByDeviceType,
       updateAvailable: latestFirmware.some((fw) => fw.firmwareUpdateAvailable),
+      totalLatestFirmware: latestFirmware.length,
     });
   } catch (error) {
     console.error("Error getting latest firmware:", error);
@@ -799,7 +846,7 @@ const clearFirmwareUpdateAvailable = async (req, res) => {
   }
 };
 
-// Set firmware update available for all latest firmware
+// UPDATED: Set firmware update available for all latest firmware (device-type specific)
 const setAllLatestFirmwareUpdateAvailable = async (req, res) => {
   try {
     const { deviceType } = req.body;
@@ -814,10 +861,18 @@ const setAllLatestFirmwareUpdateAvailable = async (req, res) => {
       { where: whereClause }
     );
 
+    const message = deviceType
+      ? `Firmware update flag set for ${updatedCount} latest firmware(s) of device type '${deviceType}'`
+      : `Firmware update flag set for ${updatedCount} latest firmware(s) across all device types`;
+
     return res.status(200).json({
       success: true,
-      message: `Firmware update flag set for ${updatedCount} latest firmware(s)`,
-      data: { deviceType, firmwareUpdateAvailable: true },
+      message: message,
+      data: {
+        deviceType: deviceType || "all",
+        firmwareUpdateAvailable: true,
+        updatedCount,
+      },
     });
   } catch (error) {
     console.error("Error setting all latest firmware update flag:", error);
@@ -833,9 +888,15 @@ const setAllLatestFirmwareUpdateAvailable = async (req, res) => {
 const getFirmwareByVersion = async (req, res) => {
   try {
     const { version } = req.params;
+    const { deviceType } = req.query; // Optional query parameter
+
+    const whereClause = { version, deletedAt: null };
+    if (deviceType) {
+      whereClause.deviceType = deviceType;
+    }
 
     const firmware = await Firmware.findAll({
-      where: { version, deletedAt: null },
+      where: whereClause,
       attributes: [
         "id",
         "version",
@@ -848,20 +909,34 @@ const getFirmwareByVersion = async (req, res) => {
         "fileType",
         "originalZipDeleted",
         "firmwareUpdateAvailable",
+        "isLatest",
       ],
-      order: [["uploadedAt", "DESC"]],
+      order: [
+        ["deviceType", "ASC"],
+        ["uploadedAt", "DESC"],
+      ],
     });
 
     if (!firmware || firmware.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Firmware not found" });
+      const message = deviceType
+        ? `No firmware found for version '${version}' and device type '${deviceType}'`
+        : `No firmware found for version '${version}'`;
+
+      return res.status(404).json({
+        success: false,
+        message: message,
+        version: version,
+        deviceType: deviceType || null,
+      });
     }
 
     return res.status(200).json({
       success: true,
       data: firmware,
       updateAvailable: firmware.some((fw) => fw.firmwareUpdateAvailable),
+      version: version,
+      deviceType: deviceType || null,
+      totalFound: firmware.length,
     });
   } catch (error) {
     console.error("Error getting firmware by version:", error);
@@ -873,7 +948,7 @@ const getFirmwareByVersion = async (req, res) => {
   }
 };
 
-// Set a firmware as latest with enhanced logic
+// UPDATED: Set a firmware as latest with device-type specific logic
 const setLatestFirmware = async (req, res) => {
   try {
     const { id } = req.params;
@@ -888,27 +963,74 @@ const setLatestFirmware = async (req, res) => {
         .json({ success: false, message: "Firmware not found" });
     }
 
-    // Update all firmware to not be latest
-    await Firmware.update(
-      { isLatest: false },
-      { where: { isLatest: true, deletedAt: null } }
-    );
+    // Use transaction to ensure data consistency
+    const result = await sequelize.transaction(async (t) => {
+      const deviceType = firmware.deviceType;
 
-    // Set this firmware as latest
-    firmware.isLatest = true;
-    await firmware.save();
+      if (deviceType) {
+        // Update all firmware of the same device type to not be latest
+        await Firmware.update(
+          { isLatest: false },
+          {
+            where: {
+              deviceType: deviceType,
+              deletedAt: null,
+            },
+            transaction: t,
+          }
+        );
+
+        console.log(
+          `Cleared latest flag for all firmware of device type '${deviceType}'`
+        );
+      } else {
+        // If no device type, update all firmware with no device type to not be latest
+        await Firmware.update(
+          { isLatest: false },
+          {
+            where: {
+              deviceType: null,
+              deletedAt: null,
+            },
+            transaction: t,
+          }
+        );
+
+        console.log("Cleared latest flag for all firmware with no device type");
+      }
+
+      // Set this firmware as latest
+      await firmware.update({ isLatest: true }, { transaction: t });
+
+      console.log(
+        `Set firmware ID ${firmware.id} (version ${
+          firmware.version
+        }) as latest for device type '${deviceType || "unspecified"}'`
+      );
+
+      return {
+        firmware,
+        deviceType,
+        clearedOthers: true,
+      };
+    });
 
     return res.status(200).json({
       success: true,
-      message: "Firmware set as latest",
+      message: `Firmware set as latest for device type '${
+        result.deviceType || "unspecified"
+      }'`,
       data: {
-        id: firmware.id,
-        version: firmware.version,
-        fileName: firmware.fileName,
-        uploadedAt: firmware.uploadedAt,
-        fileType: firmware.fileType,
-        isZipExtracted: firmware.isZipExtracted,
+        id: result.firmware.id,
+        version: result.firmware.version,
+        fileName: result.firmware.fileName,
+        uploadedAt: result.firmware.uploadedAt,
+        fileType: result.firmware.fileType,
+        isZipExtracted: result.firmware.isZipExtracted,
+        deviceType: result.firmware.deviceType,
+        isLatest: true,
       },
+      deviceType: result.deviceType || null,
     });
   } catch (error) {
     console.error("Error setting latest firmware:", error);
@@ -920,6 +1042,7 @@ const setLatestFirmware = async (req, res) => {
   }
 };
 
+// UPDATED: Delete firmware with device-type aware latest firmware handling
 const deleteFirmware = async (req, res) => {
   try {
     const { id } = req.params;
@@ -937,7 +1060,9 @@ const deleteFirmware = async (req, res) => {
     }
 
     console.log(
-      `Starting deletion process for firmware ID: ${id}, Version: ${firmware.version}`
+      `Starting deletion process for firmware ID: ${id}, Version: ${
+        firmware.version
+      }, Device Type: ${firmware.deviceType || "unspecified"}`
     );
 
     let filesDeleted = [];
@@ -998,17 +1123,27 @@ const deleteFirmware = async (req, res) => {
       }
     }
 
-    // If this firmware was marked as latest, we might want to set another version as latest
+    // UPDATED: If this firmware was marked as latest, set another version as latest for the same device type
     let newLatestSet = false;
     if (firmware.isLatest) {
       try {
+        const deviceType = firmware.deviceType;
+
         // Find the next most recent firmware of the same device type to set as latest
+        const whereClause = {
+          id: { [Op.ne]: firmware.id }, // Exclude current firmware
+          deletedAt: null,
+        };
+
+        // Only filter by device type if the deleted firmware had a device type
+        if (deviceType) {
+          whereClause.deviceType = deviceType;
+        } else {
+          whereClause.deviceType = null; // Look for firmware with no device type
+        }
+
         const nextLatest = await Firmware.findOne({
-          where: {
-            id: { [Op.ne]: firmware.id }, // Exclude current firmware
-            deletedAt: null,
-            ...(firmware.deviceType && { deviceType: firmware.deviceType }),
-          },
+          where: whereClause,
           order: [["uploadedAt", "DESC"]],
           paranoid: true, // Only non-deleted records
         });
@@ -1019,8 +1154,19 @@ const deleteFirmware = async (req, res) => {
             id: nextLatest.id,
             version: nextLatest.version,
             fileName: nextLatest.fileName,
+            deviceType: nextLatest.deviceType,
           };
-          console.log(`Set new latest firmware: ${nextLatest.version}`);
+          console.log(
+            `Set new latest firmware for device type '${
+              deviceType || "unspecified"
+            }': ${nextLatest.version}`
+          );
+        } else {
+          console.log(
+            `No other firmware found for device type '${
+              deviceType || "unspecified"
+            }' to set as latest`
+          );
         }
       } catch (error) {
         console.error("Error setting new latest firmware:", error);
@@ -1056,6 +1202,7 @@ const deleteFirmware = async (req, res) => {
           hasErrors: deletionErrors.length > 0,
           wasLatest: firmware.isLatest,
           newLatestSet: !!newLatestSet,
+          deviceTypeAffected: firmware.deviceType || "unspecified",
         },
       },
     });
@@ -1064,6 +1211,127 @@ const deleteFirmware = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Error deleting firmware",
+      error: error.message,
+    });
+  }
+};
+
+// NEW: Get latest firmware by device type
+const getLatestFirmwareByDeviceType = async (req, res) => {
+  try {
+    const { deviceType } = req.params;
+
+    if (!deviceType) {
+      return res.status(400).json({
+        success: false,
+        message: "Device type is required",
+      });
+    }
+
+    const latestFirmware = await Firmware.findOne({
+      where: {
+        deviceType: deviceType,
+        isLatest: true,
+        deletedAt: null,
+      },
+      attributes: [
+        "id",
+        "version",
+        "fileName",
+        "uploadedAt",
+        "description",
+        "deviceType",
+        "isZipExtracted",
+        "extractPath",
+        "fileType",
+        "originalZipDeleted",
+        "firmwareUpdateAvailable",
+        "isLatest",
+      ],
+      order: [["uploadedAt", "DESC"]],
+    });
+
+    if (!latestFirmware) {
+      return res.status(404).json({
+        success: false,
+        message: `No latest firmware found for device type '${deviceType}'`,
+        deviceType: deviceType,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: latestFirmware,
+      deviceType: deviceType,
+      updateAvailable: latestFirmware.firmwareUpdateAvailable,
+    });
+  } catch (error) {
+    console.error("Error getting latest firmware by device type:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error getting latest firmware by device type",
+      error: error.message,
+    });
+  }
+};
+
+// NEW: Get all firmware by device type
+const getFirmwareByDeviceType = async (req, res) => {
+  try {
+    const { deviceType } = req.params;
+
+    if (!deviceType) {
+      return res.status(400).json({
+        success: false,
+        message: "Device type is required",
+      });
+    }
+
+    const firmware = await Firmware.findAll({
+      where: {
+        deviceType: deviceType,
+        deletedAt: null,
+      },
+      attributes: [
+        "id",
+        "version",
+        "fileName",
+        "uploadedAt",
+        "description",
+        "deviceType",
+        "isZipExtracted",
+        "extractPath",
+        "fileType",
+        "originalZipDeleted",
+        "firmwareUpdateAvailable",
+        "isLatest",
+      ],
+      order: [["uploadedAt", "DESC"]],
+    });
+
+    if (!firmware || firmware.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No firmware found for device type '${deviceType}'`,
+        deviceType: deviceType,
+      });
+    }
+
+    const latestFirmware = firmware.find((fw) => fw.isLatest);
+
+    return res.status(200).json({
+      success: true,
+      data: firmware,
+      deviceType: deviceType,
+      totalFirmware: firmware.length,
+      latestFirmware: latestFirmware || null,
+      hasUpdateAvailable: firmware.some((fw) => fw.firmwareUpdateAvailable),
+    });
+  } catch (error) {
+    console.error("Error getting firmware by device type:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error getting firmware by device type",
       error: error.message,
     });
   }
@@ -1084,4 +1352,6 @@ module.exports = {
   setLatestFirmware,
   deleteFirmware,
   getAvailableDeviceTypes,
+  getLatestFirmwareByDeviceType,
+  getFirmwareByDeviceType,
 };
