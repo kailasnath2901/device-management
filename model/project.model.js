@@ -141,47 +141,47 @@ const Project = sequelize.define(
       type: DataTypes.DATE,
       field: "updated_at", // Add this mapping
     },
-  dashboard: {
-  type: DataTypes.TEXT("long"),
-  allowNull: true,
-  get() {
-    const value = this.getDataValue('dashboard');
-    if (!value) return null;
-    
-    // If it's already an object, return it
-    if (typeof value === 'object') {
-      return value;
-    }
-    
-    // If it's a string, try to parse it
-    try {
-      return JSON.parse(value);
-    } catch (e) {
-      console.error('Error parsing dashboard JSON:', e);
-      return null;
-    }
-  },
-  set(value) {
-    if (value === null || value === undefined) {
-      this.setDataValue('dashboard', null);
-      return;
-    }
-    
-    // If it's already a string, store it directly
-    if (typeof value === 'string') {
-      this.setDataValue('dashboard', value);
-      return;
-    }
-    
-    // If it's an object/array, stringify it
-    try {
-      this.setDataValue('dashboard', JSON.stringify(value));
-    } catch (e) {
-      console.error('Error stringifying dashboard:', e);
-      this.setDataValue('dashboard', null);
-    }
-  }
-},
+    dashboard: {
+      type: DataTypes.TEXT("long"),
+      allowNull: true,
+      get() {
+        const value = this.getDataValue("dashboard");
+        if (!value) return null;
+
+        // If it's already an object, return it
+        if (typeof value === "object") {
+          return value;
+        }
+
+        // If it's a string, try to parse it
+        try {
+          return JSON.parse(value);
+        } catch (e) {
+          console.error("Error parsing dashboard JSON:", e);
+          return null;
+        }
+      },
+      set(value) {
+        if (value === null || value === undefined) {
+          this.setDataValue("dashboard", null);
+          return;
+        }
+
+        // If it's already a string, store it directly
+        if (typeof value === "string") {
+          this.setDataValue("dashboard", value);
+          return;
+        }
+
+        // If it's an object/array, stringify it
+        try {
+          this.setDataValue("dashboard", JSON.stringify(value));
+        } catch (e) {
+          console.error("Error stringifying dashboard:", e);
+          this.setDataValue("dashboard", null);
+        }
+      },
+    },
   },
 
   {

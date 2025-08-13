@@ -1092,6 +1092,8 @@ class ProjectService {
     acquisition.hasRemovalOccurred = true;
     await acquisition.save();
 
+    await device.update({ isModified: true });
+
     const remainingProjects = await UserProjectAcquisition.count({
       where: {
         deviceId: deviceId,
