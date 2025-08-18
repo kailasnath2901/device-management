@@ -892,107 +892,114 @@ class ProjectService {
     return latestAcquisition?.firmwareVersion || "1.0";
   }
 
-  async getAcquiredProjects(userId, options) {
-    const { page = 1, limit = 10, deviceId, serialNumber } = options;
-    const offset = (page - 1) * limit;
+async getAcquiredProjects(userId, options) {
+  const { page = 1, limit = 10, deviceId, serialNumber } = options;
+  const offset = (page - 1) * limit;
 
-    const whereClause = {
-      userId: userId,
-      hasRemovalOccurred: false,
-    };
+  const whereClause = {
+    userId: userId,
+    hasRemovalOccurred: false,
+  };
 
-    // Build device include clause
-    const deviceInclude = {
-      model: Device,
-      as: "device",
-      required: false,
-      // Only return essential device attributes
-      attributes: ["id", "deviceName", "serialNumber"],
-    };
+  // If filtering by deviceId, add it directly to the where clause
+  if (deviceId) {
+    whereClause.deviceId = deviceId;
+  }
 
-    // Set device filter conditions
-    if (serialNumber) {
-      deviceInclude.where = {
-        serialNumber: serialNumber,
+  // If filtering by serialNumber, we need to find the device first
+  if (serialNumber) {
+    const device = await Device.findOne({
+      where: { serialNumber: serialNumber },
+      attributes: ['id']
+    });
+    
+    if (!device) {
+      // If device with serial number doesn't exist, return empty results
+      return {
+        projects: [],
+        totalProjectsAcquired: 0,
+        currentPage: page,
+        totalPages: 0,
       };
-      deviceInclude.required = true; // Make it an INNER JOIN when filtering by serial number
-    } else if (deviceId) {
-      // If filtering by deviceId, add it to the main where clause
-      whereClause.deviceId = deviceId;
+    }
+    
+    // Add the device ID to the where clause
+    whereClause.deviceId = device.id;
+  }
+
+  const { count, rows } = await UserProjectAcquisition.findAndCountAll({
+    where: whereClause,
+    attributes: ["id", "createdAt"],
+    include: [
+      {
+        model: Project,
+        as: "project",
+        attributes: ["id", "name"],
+        include: [
+          {
+            model: ProjectFile,
+            as: "files",
+            attributes: ["id", "filename"],
+            required: false,
+          },
+          {
+            model: ProjectImage,
+            as: "images",
+            attributes: ["id", "filename"],
+            required: false,
+          },
+        ],
+      },
+      {
+        model: Device,
+        as: "device",
+        required: true, // Always require device to be present
+        attributes: ["id", "deviceName", "serialNumber"],
+      },
+    ],
+    limit: limit,
+    offset: offset,
+    order: [["createdAt", "DESC"]],
+    distinct: true,
+    col: "id",
+  });
+
+  // Transform the response
+  const projectsWithMinimalData = rows.map((acquisition) => {
+    const acquisitionData = acquisition.toJSON();
+
+    // Transform images to URL strings
+    let imageUrls = [];
+    if (acquisitionData.project && acquisitionData.project.images) {
+      imageUrls = acquisitionData.project.images.map(
+        (image) =>
+          `/projects/${acquisitionData.project.id}/images/${image.filename}`
+      );
     }
 
-    const { count, rows } = await UserProjectAcquisition.findAndCountAll({
-      where: whereClause,
-      attributes: ["id", "createdAt"],
-      include: [
-        {
-          model: Project,
-          as: "project",
-          // Only return essential project attributes
-          attributes: ["id", "name"],
-          include: [
-            {
-              model: ProjectFile,
-              as: "files",
-              attributes: ["id", "filename"],
-              required: false,
-            },
-            {
-              model: ProjectImage,
-              as: "images",
-              attributes: ["id", "filename"],
-              required: false,
-            },
-          ],
-        },
-        deviceInclude,
-      ],
-      limit: limit,
-      offset: offset,
-      order: [["createdAt", "DESC"]],
-      distinct: true,
-      col: "id",
-    });
-
-    // Transform the response to match the required minimal format
-    const projectsWithMinimalData = rows.map((acquisition) => {
-      const acquisitionData = acquisition.toJSON();
-
-      // Transform images to URL strings
-      let imageUrls = [];
-      if (acquisitionData.project && acquisitionData.project.images) {
-        imageUrls = acquisitionData.project.images.map(
-          (image) =>
-            `/projects/${acquisitionData.project.id}/images/${image.filename}`
-        );
-      }
-
-      // Return only the required minimal data structure
-      return {
-        id: acquisitionData.id,
-        project: {
-          id: acquisitionData.project.id,
-          name: acquisitionData.project.name,
-          files: acquisitionData.project.files || [],
-          images: imageUrls,
-        },
-        device: acquisitionData.device
-          ? {
-              id: acquisitionData.device.id,
-              deviceName: acquisitionData.device.deviceName,
-              serialNumber: acquisitionData.device.serialNumber,
-            }
-          : null,
-      };
-    });
-
     return {
-      projects: projectsWithMinimalData,
-      totalProjectsAcquired: count,
-      currentPage: page,
-      totalPages: Math.ceil(count / limit),
+      id: acquisitionData.id,
+      project: {
+        id: acquisitionData.project.id,
+        name: acquisitionData.project.name,
+        files: acquisitionData.project.files || [],
+        images: imageUrls,
+      },
+      device: {
+        id: acquisitionData.device.id,
+        deviceName: acquisitionData.device.deviceName,
+        serialNumber: acquisitionData.device.serialNumber,
+      },
     };
-  }
+  });
+
+  return {
+    projects: projectsWithMinimalData,
+    totalProjectsAcquired: count,
+    currentPage: page,
+    totalPages: Math.ceil(count / limit),
+  };
+}
 
   async removeAcquiredProject(userId, projectId, deviceId) {
     const acquisition = await UserProjectAcquisition.findOne({
