@@ -1044,6 +1044,7 @@ class ProjectController {
   async downloadProjectFile(req, res) {
     try {
       const { fileId } = req.params;
+      const { chunkSize = 512 } = req.query; // Allow client to specify chunk size
 
       // Fetch file with full project details
       const file = await ProjectFile.findByPk(fileId, {
@@ -1080,73 +1081,80 @@ class ProjectController {
         });
       }
 
-      // Get file stats for Content-Length
+      // Get file stats
       const stats = fs.statSync(file.filePath);
       const fileSize = stats.size;
 
-      // Set proper headers for file download
-      res.setHeader(
-        "Content-Type",
-        file.mimetype || "application/octet-stream"
-      );
-      res.setHeader("Content-Length", fileSize);
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${encodeURIComponent(file.originalName)}"`
-      );
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Accept-Ranges", "bytes");
-
-      // Handle range requests for large files
+      // Parse range header
       const range = req.headers.range;
+      let start = 0;
+      let end = fileSize - 1;
+
       if (range) {
         const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-        const chunkSize = end - start + 1;
-
-        if (start >= fileSize || end >= fileSize) {
-          res.status(416).setHeader("Content-Range", `bytes */${fileSize}`);
-          return res.end();
-        }
-
-        res.status(206);
-        res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
-        res.setHeader("Content-Length", chunkSize);
-
-        const stream = fs.createReadStream(file.filePath, { start, end });
-        stream.pipe(res);
+        start = parseInt(parts[0], 10) || 0;
+        end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + parseInt(chunkSize) - 1, fileSize - 1);
       } else {
-        // Normal download without range
-        const stream = fs.createReadStream(file.filePath);
-
-        // Handle stream errors
-        stream.on("error", (error) => {
-          console.error("Stream error:", error);
-          if (!res.headersSent) {
-            res.status(500).json({
-              success: false,
-              message: "Error reading file",
-            });
-          }
-        });
-
-        // Handle stream end
-        stream.on("end", () => {
-          console.log(`File download completed: ${file.filename}`);
-        });
-
-        // Pipe the stream to response
-        stream.pipe(res);
+        // If no range specified, send first chunk
+        end = Math.min(parseInt(chunkSize) - 1, fileSize - 1);
       }
 
-      // Optional: Log download activity
-      console.log(
-        `File download started: ${file.filename} (${fileSize} bytes) for user ${req.user.id}`
-      );
+      // Validate range
+      if (start >= fileSize || end >= fileSize || start > end) {
+        res.status(416).setHeader("Content-Range", `bytes */${fileSize}`);
+        return res.json({
+          success: false,
+          message: "Invalid range",
+        });
+      }
+
+      const chunkLength = end - start + 1;
+
+      // Set headers for chunked download
+      res.status(start === 0 && end === fileSize - 1 ? 200 : 206);
+      res.setHeader("Content-Type", file.mimetype || "application/octet-stream");
+      res.setHeader("Content-Length", chunkLength);
+      res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Connection", "keep-alive");
+
+      // Add file metadata headers for client
+      res.setHeader("X-File-Name", encodeURIComponent(file.originalName));
+      res.setHeader("X-File-Size", fileSize);
+      res.setHeader("X-Chunk-Start", start);
+      res.setHeader("X-Chunk-End", end);
+      res.setHeader("X-Chunks-Remaining", Math.ceil((fileSize - end - 1) / parseInt(chunkSize)));
+
+      // Create read stream for specific chunk
+      const stream = fs.createReadStream(file.filePath, {
+        start,
+        end,
+        highWaterMark: Math.min(parseInt(chunkSize), 1024) // Smaller buffer for embedded devices
+      });
+
+      // Handle stream errors
+      stream.on("error", (error) => {
+        console.error("Stream error:", error);
+        if (!res.headersSent) {
+          res.status(500).json({
+            success: false,
+            message: "Error reading file chunk",
+            error: error.message,
+          });
+        }
+      });
+
+      // Handle successful chunk completion
+      stream.on("end", () => {
+        console.log(`Chunk download completed: ${file.filename} bytes ${start}-${end}/${fileSize} for user ${req.user.id}`);
+      });
+
+      // Pipe the chunk to response
+      stream.pipe(res);
+
     } catch (error) {
       console.error("Download error:", error);
-
       if (!res.headersSent) {
         res.status(500).json({
           success: false,
