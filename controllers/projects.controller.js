@@ -1041,147 +1041,67 @@ class ProjectController {
     }
   }
 
-async downloadProjectFile(req, res) {
-  try {
-    const { fileId } = req.params;
+ async downloadProjectFile(req, res) {
+    try {
+      const { fileId } = req.params;
 
-    // Fetch file with full project details
-    const file = await ProjectFile.findByPk(fileId, {
-      include: [
-        {
-          model: Project,
-          as: "project",
-          attributes: ["id", "userId"],
-        },
-      ],
-    });
-
-    // Check file existence
-    if (!file) {
-      return res.status(404).json({
-        success: false,
-        message: "File not found",
+      // Fetch file with full project details
+      const file = await ProjectFile.findByPk(fileId, {
+        include: [
+          {
+            model: Project,
+            as: "project",
+            attributes: ["id", "userId"],
+          },
+        ],
       });
-    }
 
-    // Check if user is authenticated
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required",
-      });
-    }
-
-    // Check physical file existence
-    if (!fs.existsSync(file.filePath)) {
-      return res.status(404).json({
-        success: false,
-        message: "File does not exist on server",
-      });
-    }
-
-    // Get file stats for Content-Length
-    const stats = fs.statSync(file.filePath);
-    const fileSize = stats.size;
-
-    // Enhanced headers for better connection management
-    res.setHeader("Content-Type", file.mimetype || "application/octet-stream");
-    res.setHeader("Content-Length", fileSize);
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${encodeURIComponent(file.originalName)}"`
-    );
-    
-    // Connection management headers
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("Keep-Alive", "timeout=300, max=1000");
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-    res.setHeader("Accept-Ranges", "bytes");
-    
-    // Add headers to prevent proxy buffering
-    res.setHeader("X-Accel-Buffering", "no");
-    res.setHeader("Transfer-Encoding", "chunked");
-
-    // Handle range requests for large files
-    const range = req.headers.range;
-    if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + 512 - 1, fileSize - 1); // Limit chunk to 512 bytes
-      const chunkSize = end - start + 1;
-
-      if (start >= fileSize || end >= fileSize) {
-        res.status(416).setHeader("Content-Range", `bytes */${fileSize}`);
-        return res.end();
+      // Check file existence
+      if (!file) {
+        return res.status(404).json({
+          success: false,
+          message: "File not found",
+        });
       }
 
-      res.status(206);
-      res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
-      res.setHeader("Content-Length", chunkSize);
+      // Check if user is authenticated
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
 
-      const stream = fs.createReadStream(file.filePath, { 
-        start, 
-        end,
-        highWaterMark: 512 // Limit read buffer to 512 bytes
-      });
-      
-      stream.on("error", (error) => {
-        console.error("Range stream error:", error);
-        if (!res.headersSent) {
-          res.status(500).json({
-            success: false,
-            message: "Error reading file chunk",
-          });
-        }
-      });
+      // Check physical file existence
+      if (!fs.existsSync(file.filePath)) {
+        return res.status(404).json({
+          success: false,
+          message: "File does not exist on server",
+        });
+      }
 
-      stream.pipe(res);
-    } else {
-      // For non-range requests, use chunked transfer with small chunks
-      const stream = fs.createReadStream(file.filePath, {
-        highWaterMark: 512 // Read 512 bytes at a time
-      });
+      // Set download headers
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${file.filename}"`
+      );
+      res.setHeader(
+        "Content-Type",
+        file.mimetype || "application/octet-stream"
+      );
 
-      // Handle stream errors
-      stream.on("error", (error) => {
-        console.error("Stream error:", error);
-        if (!res.headersSent) {
-          res.status(500).json({
-            success: false,
-            message: "Error reading file",
-          });
-        }
-      });
+      // Stream the file
+      const fileStream = fs.createReadStream(file.filePath);
+      fileStream.pipe(res);
 
-      // Handle stream end
-      stream.on("end", () => {
-        console.log(`File download completed: ${file.filename}`);
-      });
-
-      // Add throttling for hardware devices
-      let bytesWritten = 0;
-      stream.on('data', (chunk) => {
-        bytesWritten += chunk.length;
-        // Small delay every 512 bytes to prevent overwhelming the device
-        if (bytesWritten % 1024 === 0) {
-          setTimeout(() => {}, 1); // 1ms delay
-        }
-      });
-
-      // Pipe the stream to response
-      stream.pipe(res);
-    }
-
-    // Log download activity
-    console.log(
-      `File download started: ${file.filename} (${fileSize} bytes) for user ${req.user.id}`
-    );
-  } catch (error) {
-    console.error("Download error:", error);
-
-    if (!res.headersSent) {
+      // Optional: Log download activity
+      // await FileDownloadLog.create({
+      //   userId: req.user.id,
+      //   fileId: file.id,
+      //   downloadedAt: new Date()
+      // });
+    } catch (error) {
+      console.error("Download error:", error);
       res.status(500).json({
         success: false,
         message: "Internal server error during file download",
@@ -1189,7 +1109,7 @@ async downloadProjectFile(req, res) {
       });
     }
   }
-}
+
 
   async acquireProject(req, res) {
     try {
