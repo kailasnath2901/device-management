@@ -1080,80 +1080,33 @@ class ProjectController {
         });
       }
 
-      // Get file stats for Content-Length
-      const stats = fs.statSync(file.filePath);
-      const fileSize = stats.size;
-
-      // Set proper headers for file download
+      // Set download headers
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${file.filename}"`
+      );
       res.setHeader(
         "Content-Type",
         file.mimetype || "application/octet-stream"
       );
-      res.setHeader("Content-Length", fileSize);
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${encodeURIComponent(file.originalName)}"`
-      );
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Accept-Ranges", "bytes");
 
-      // Handle range requests for large files
-      const range = req.headers.range;
-      if (range) {
-        const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-        const chunkSize = end - start + 1;
-
-        if (start >= fileSize || end >= fileSize) {
-          res.status(416).setHeader("Content-Range", `bytes */${fileSize}`);
-          return res.end();
-        }
-
-        res.status(206);
-        res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
-        res.setHeader("Content-Length", chunkSize);
-
-        const stream = fs.createReadStream(file.filePath, { start, end });
-        stream.pipe(res);
-      } else {
-        // Normal download without range
-        const stream = fs.createReadStream(file.filePath);
-
-        // Handle stream errors
-        stream.on("error", (error) => {
-          console.error("Stream error:", error);
-          if (!res.headersSent) {
-            res.status(500).json({
-              success: false,
-              message: "Error reading file",
-            });
-          }
-        });
-
-        // Handle stream end
-        stream.on("end", () => {
-          console.log(`File download completed: ${file.filename}`);
-        });
-
-        // Pipe the stream to response
-        stream.pipe(res);
-      }
+      // Stream the file
+      const fileStream = fs.createReadStream(file.filePath);
+      fileStream.pipe(res);
 
       // Optional: Log download activity
-      console.log(
-        `File download started: ${file.filename} (${fileSize} bytes) for user ${req.user.id}`
-      );
+      // await FileDownloadLog.create({
+      //   userId: req.user.id,
+      //   fileId: file.id,
+      //   downloadedAt: new Date()
+      // });
     } catch (error) {
       console.error("Download error:", error);
-
-      if (!res.headersSent) {
-        res.status(500).json({
-          success: false,
-          message: "Internal server error during file download",
-          errorDetails: error.message,
-        });
-      }
+      res.status(500).json({
+        success: false,
+        message: "Internal server error during file download",
+        errorDetails: error.message,
+      });
     }
   }
 
