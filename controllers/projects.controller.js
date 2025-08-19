@@ -9,7 +9,6 @@ const ProjectImage = require("../model/projectImage.model");
 const Category = require("../model/category.model");
 const ProjectComponent = require("../model/projectComponent.model");
 const Component = require("../model/component.model");
-const Device = require("../model/user-device.model");
 
 class ProjectController {
   async createCategory(req, res) {
@@ -1042,7 +1041,7 @@ class ProjectController {
     }
   }
 
-  async downloadProjectFile(req, res) {
+ async downloadProjectFile(req, res) {
     try {
       const { fileId } = req.params;
 
@@ -1111,6 +1110,7 @@ class ProjectController {
     }
   }
 
+
   async acquireProject(req, res) {
     try {
       const { projectId } = req.params;
@@ -1159,141 +1159,41 @@ class ProjectController {
     }
   }
 
-  async getAcquiredProjects(userId, options) {
-    const { page = 1, limit = 10, deviceId, serialNumber } = options;
-    const offset = (page - 1) * limit;
-
-    console.log("🔍 getAcquiredProjects called with:", {
-      userId,
-      page,
-      limit,
-      deviceId,
-      serialNumber,
-    });
-
-    const whereClause = {
-      userId: userId,
-      hasRemovalOccurred: false,
-    };
-
-    // If filtering by deviceId, add it directly to the where clause
-    if (deviceId) {
-      whereClause.deviceId = deviceId;
-    }
-
-    // If filtering by serialNumber, we need to find the device first
-    if (serialNumber) {
-      const device = await Device.findOne({
-        where: { serialNumber: serialNumber },
-        attributes: ["id", "deviceName", "serialNumber"],
-      });
-
-      if (!device) {
-        return {
-          projects: [],
-          totalProjectsAcquired: 0,
-          currentPage: page,
-          totalPages: 0,
-        };
+  async getAcquiredProjects(req, res) {
+    try {
+      const userId = req.user.id;
+      const { page = 1, limit = 10, deviceId,serialNumber } = req.query;
+ 
+      // Validate deviceId if provided
+      if (deviceId && isNaN(parseInt(deviceId))) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid device ID provided",
+        });
       }
 
-      whereClause.deviceId = device.id;
-    }
-
-    console.log("📋 Final where clause:", whereClause);
-
-    try {
-      const { count, rows } = await UserProjectAcquisition.findAndCountAll({
-        where: whereClause,
-        attributes: ["id", "createdAt"],
-        include: [
-          {
-            model: Project,
-            as: "project",
-            attributes: ["id", "name"],
-            where: { deleted_at: null }, // ✅ Make sure we only get non-deleted projects
-            include: [
-              {
-                model: ProjectFile,
-                as: "files",
-                attributes: ["id", "filename"],
-                where: { deleted_at: null }, // ✅ Make sure we only get non-deleted files
-                required: false,
-              },
-              {
-                model: ProjectImage,
-                as: "images",
-                attributes: ["id", "filename"],
-                where: { deleted_at: null }, // ✅ Make sure we only get non-deleted images
-                required: false,
-              },
-            ],
-          },
-          {
-            model: Device,
-            as: "device",
-            required: true, // Always require device to be present
-            attributes: ["id", "deviceName", "serialNumber"],
-          },
-        ],
-        limit: limit,
-        offset: offset,
-        order: [["createdAt", "DESC"]],
-        distinct: true,
-        col: "id",
+      const result = await ProjectService.getAcquiredProjects(userId, {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        deviceId: deviceId ? parseInt(deviceId) : null,
+        serialNumber:serialNumber
       });
 
-      console.log("📊 Query results:", {
-        count,
-        rowsLength: rows.length,
-        firstRowDeviceInfo:
-          rows.length > 0
-            ? {
-                deviceId: rows[0].device?.id,
-                deviceName: rows[0].device?.deviceName,
-                serialNumber: rows[0].device?.serialNumber,
-              }
-            : "No rows",
+      res.json({
+        success: true,
+        projects: result.projects,
+        totalAcquiredProjects: result.totalProjectsAcquired,
+        currentPage: result.currentPage,
+        totalPages: result.totalPages,
+        filteredByDevice: !!deviceId,
+        deviceId: deviceId ? parseInt(deviceId) : null,
       });
-
-      // Transform the response
-      const projectsWithMinimalData = rows.map((acquisition) => {
-        const acquisitionData = acquisition.toJSON();
-
-        // Transform images to URL strings
-        let imageUrls = [];
-        if (acquisitionData.project && acquisitionData.project.images) {
-          imageUrls = acquisitionData.project.images.map(
-            (image) =>
-              `/projects/${acquisitionData.project.id}/images/${image.filename}`
-          );
-        }
-
-        return {
-          id: acquisitionData.id,
-          project: {
-            id: acquisitionData.project.id,
-            name: acquisitionData.project.name,
-            files: acquisitionData.project.files || [],
-            images: imageUrls,
-          },
-          device: {
-            id: acquisitionData.device.id,
-            deviceName: acquisitionData.device.deviceName,
-            serialNumber: acquisitionData.device.serialNumber,
-          },
-        };
+    } catch (error) {
+      console.error("Get Acquired Projects Error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message,
       });
-
-      return {
-        projects: projectsWithMinimalData,
-        totalProjectsAcquired: count,
-        currentPage: page,
-        totalPages: Math.ceil(count / limit),
-      };
-    } catch (queryError) {
-      console.error("❌ Database query error:", queryError);
-      throw queryError;
     }
   }
 
