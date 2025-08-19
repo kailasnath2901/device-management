@@ -934,7 +934,7 @@ async getAcquiredProjects(userId, options) {
       {
         model: Project,
         as: "project",
-        attributes: ["id", "name"],
+        attributes: ["id", "name","projectId"],
         include: [
           {
             model: ProjectFile,
