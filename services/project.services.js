@@ -982,6 +982,7 @@ async getAcquiredProjects(userId, options) {
       project: {
         id: acquisitionData.project.id,
         name: acquisitionData.project.name,
+        projectId: acquisitionData.project.projectId,
         files: acquisitionData.project.files || [],
         images: imageUrls,
       },
