@@ -21,10 +21,10 @@ router.post(
 router.get("/getFirmware", authenticate, firmwareController.getAllFirmware);
 
 // Get latest firmware version
-router.get("/latest", firmwareController.getLatestFirmware);
+router.get("/latest", authenticate, firmwareController.getLatestFirmware);
 
 // Get firmware by version
-router.get("/version/:version", firmwareController.getFirmwareByVersion);
+router.get("/version/:version",authenticate, firmwareController.getFirmwareByVersion);
 
 router.get("/files/:id", authenticate, firmwareController.listExtractedFiles);
 
@@ -55,9 +55,10 @@ router.put(
   firmwareController.setAllLatestFirmwareUpdateAvailable
 );
 
-router.get('/admin/available-device-types',
+router.get(
+  "/admin/available-device-types",
   authenticate,
-  authorizeRoles('admin', 'super_admin'),
+  authorizeRoles("admin", "super_admin"),
   firmwareController.getAvailableDeviceTypes
 );
 
