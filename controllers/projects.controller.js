@@ -854,9 +854,31 @@ class ProjectController {
         });
       }
 
+      // Transform project data to add publicUrl to images
+      const projectData = project.toJSON();
+
+      // Get base URL from environment or use default
+      const baseUrl = process.env.BASE_URL || "https://dev.roboninjaz.com";
+
+      // Add publicUrl to each image
+      if (projectData.images && projectData.images.length > 0) {
+        projectData.images = projectData.images.map((image) => ({
+          ...image,
+          publicUrl: `${baseUrl}/projects/${projectId}/images/${image.filename}`,
+        }));
+      }
+
+      // Optionally add publicUrl to files as well
+      if (projectData.files && projectData.files.length > 0) {
+        projectData.files = projectData.files.map((file) => ({
+          ...file,
+          publicUrl: `${baseUrl}/projects/${projectId}/files/${file.filename}`,
+        }));
+      }
+
       return res.status(200).json({
         success: true,
-        project: project,
+        project: projectData,
       });
     } catch (error) {
       console.error("Error fetching project:", error);
@@ -1041,7 +1063,7 @@ class ProjectController {
     }
   }
 
- async downloadProjectFile(req, res) {
+  async downloadProjectFile(req, res) {
     try {
       const { fileId } = req.params;
 
@@ -1110,7 +1132,6 @@ class ProjectController {
     }
   }
 
-
   async acquireProject(req, res) {
     try {
       const { projectId } = req.params;
@@ -1162,8 +1183,8 @@ class ProjectController {
   async getAcquiredProjects(req, res) {
     try {
       const userId = req.user.id;
-      const { page = 1, limit = 10, deviceId,serialNumber } = req.query;
- 
+      const { page = 1, limit = 10, deviceId, serialNumber } = req.query;
+
       // Validate deviceId if provided
       if (deviceId && isNaN(parseInt(deviceId))) {
         return res.status(400).json({
@@ -1176,7 +1197,7 @@ class ProjectController {
         page: parseInt(page),
         limit: parseInt(limit),
         deviceId: deviceId ? parseInt(deviceId) : null,
-        serialNumber:serialNumber
+        serialNumber: serialNumber,
       });
 
       res.json({
