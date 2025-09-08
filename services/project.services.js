@@ -933,23 +933,27 @@ class ProjectService {
 
     const { count, rows } = await UserProjectAcquisition.findAndCountAll({
       where: whereClause,
-      attributes: ["id", "createdAt"],
+      // Include all attributes for full response, limit for limited response
+      attributes: showLimitedResponse ? ["id", "createdAt"] : undefined, // undefined means all attributes
       include: [
         {
           model: Project,
           as: "project",
-          attributes: ["id", "name", "projectId"],
+          // Include all project attributes when showing full response
+          attributes: showLimitedResponse
+            ? ["id", "name", "projectId"]
+            : undefined,
           include: [
             {
               model: ProjectFile,
               as: "files",
-              attributes: ["id", "filename"],
+              attributes: showLimitedResponse ? ["id", "filename"] : undefined,
               required: false,
             },
             {
               model: ProjectImage,
               as: "images",
-              attributes: ["id", "filename"],
+              attributes: showLimitedResponse ? ["id", "filename"] : undefined,
               required: false,
             },
           ],
@@ -957,8 +961,11 @@ class ProjectService {
         {
           model: Device,
           as: "device",
-          required: true, // Always require device to be present
-          attributes: ["id", "deviceName", "serialNumber"],
+          required: true,
+          // Include all device attributes when showing full response
+          attributes: showLimitedResponse
+            ? ["id", "deviceName", "serialNumber"]
+            : undefined,
         },
       ],
       limit: limit,
@@ -968,6 +975,7 @@ class ProjectService {
       col: "id",
     });
 
+    // Transform the response based on showLimitedResponse flag
     const projectsWithData = rows.map((acquisition) => {
       const acquisitionData = acquisition.toJSON();
 
@@ -981,6 +989,7 @@ class ProjectService {
       }
 
       if (showLimitedResponse) {
+        // Limited response - only when serialNumber is passed alone
         return {
           id: acquisitionData.id,
           project: {
@@ -997,23 +1006,17 @@ class ProjectService {
           },
         };
       } else {
+        // Full response - return all fields from the models
         return {
-          id: acquisitionData.id,
+          ...acquisitionData, // Include all UserProjectAcquisition fields
           project: {
-            id: acquisitionData.project.id,
-            name: acquisitionData.project.name,
-            projectId: acquisitionData.project.projectId,
+            ...acquisitionData.project, // Include all Project fields
             files: acquisitionData.project.files || [],
-            images: imageUrls,
+            images: imageUrls, // Replace original images array with URLs
           },
           device: {
-            id: acquisitionData.device.id,
-            deviceName: acquisitionData.device.deviceName,
-            serialNumber: acquisitionData.device.serialNumber,
-            // Add any additional full response fields here
+            ...acquisitionData.device, // Include all Device fields
           },
-          // Add any additional full response fields here
-          createdAt: acquisitionData.createdAt,
         };
       }
     });
@@ -1023,6 +1026,9 @@ class ProjectService {
       totalProjectsAcquired: count,
       currentPage: page,
       totalPages: Math.ceil(count / limit),
+      filteredByDevice: !!(deviceId || serialNumber),
+      deviceId:
+        deviceId || (serialNumber ? projectsWithData[0]?.device?.id : null),
     };
   }
 
