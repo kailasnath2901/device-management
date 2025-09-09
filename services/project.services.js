@@ -509,7 +509,7 @@ class ProjectService {
       if (projectData.images) {
         projectData.images = projectData.images.map((image) => ({
           ...image,
-          publicUrl: `${baseUrl}/projects/${image.projectId}/images/${image.filename}`,
+           publicUrl: `${baseUrl}/projects/${image.projectId}/images/${image.filename}`,
         }));
       }
       return projectData;
