@@ -501,20 +501,30 @@ class ProjectService {
       distinct: true,
     });
 
-    // Add public URLs for images
     const projectsWithImageUrls = rows.map((project) => {
       const projectData = project.toJSON();
-      const baseUrl =
-        process.env.BASE_URL || `http://localhost:${process.env.PORT || 8015}`;
+      const baseUrl = process.env.BASE_URL || `https://roboninjaz.com`;
+
       if (projectData.images) {
-        projectData.images = projectData.images.map((image) => ({
-          ...image,
-           publicUrl: `${baseUrl}/projects/${image.projectId}/images/${image.filename}`,
-        }));
+        projectData.images = projectData.images.map((image) => {
+          // Fixed URL to match your Express static middleware route
+          const publicUrl = `${baseUrl}/uploads/projects/${image.projectId}/images/${image.filename}`;
+
+          // Debug logging
+          console.log("Generated URL:", publicUrl);
+          console.log(
+            "File should exist at:",
+            `/var/www/production/new-project/device-management/public/projects/${image.projectId}/images/${image.filename}`
+          );
+
+          return {
+            ...image,
+            publicUrl: publicUrl,
+          };
+        });
       }
       return projectData;
     });
-
     return {
       projects: projectsWithImageUrls,
       totalProjects: count,

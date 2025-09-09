@@ -40,9 +40,9 @@ app.use(
 // );
 
 // Static file serving
-app.use(express.static(path.join(__dirname, "public")));
+// app.use(express.static(path.join(__dirname, "public")));
 
-app.use("/projects", express.static(path.join(__dirname, "public/projects")));
+app.use("/uploads/projects", express.static(path.join(__dirname, "public/projects")));
 
 
 // Routes
