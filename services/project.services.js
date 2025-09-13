@@ -902,145 +902,176 @@ class ProjectService {
     return latestAcquisition?.firmwareVersion || "1.0";
   }
 
-  async getAcquiredProjects(userId, options) {
-    const { page = 1, limit = 10, deviceId, serialNumber } = options;
-    const offset = (page - 1) * limit;
+async getAcquiredProjects(userId, options) {
+  const { page = 1, limit = 10, deviceId, serialNumber } = options;
+  const offset = (page - 1) * limit;
 
-    const whereClause = {
-      userId: userId,
-      hasRemovalOccurred: false,
-    };
+  const whereClause = {
+    userId: userId,
+    hasRemovalOccurred: false,
+  };
 
-    // Determine if we should show limited response
-    // Only show limited response if ONLY serialNumber is passed (not deviceId)
-    const showLimitedResponse = serialNumber && !deviceId;
+  // Determine if we should show limited response
+  // Only show limited response if ONLY serialNumber is passed (not deviceId)
+  const showLimitedResponse = serialNumber && !deviceId;
 
-    // If filtering by deviceId, add it directly to the where clause
-    if (deviceId) {
-      whereClause.deviceId = deviceId;
-    }
+  let targetDeviceId = null;
 
-    // If filtering by serialNumber, we need to find the device first
-    if (serialNumber) {
-      const device = await Device.findOne({
-        where: { serialNumber: serialNumber },
-        attributes: ["id"],
-      });
-
-      if (!device) {
-        // If device with serial number doesn't exist, return empty results
-        return {
-          projects: [],
-          totalProjectsAcquired: 0,
-          currentPage: page,
-          totalPages: 0,
-        };
-      }
-
-      // Add the device ID to the where clause
-      whereClause.deviceId = device.id;
-    }
-
-    const { count, rows } = await UserProjectAcquisition.findAndCountAll({
-      where: whereClause,
-      // Include all attributes for full response, limit for limited response
-      attributes: showLimitedResponse ? ["id", "createdAt"] : undefined, // undefined means all attributes
-      include: [
-        {
-          model: Project,
-          as: "project",
-          // Include all project attributes when showing full response
-          attributes: showLimitedResponse
-            ? ["id", "name", "projectId"]
-            : undefined,
-          include: [
-            {
-              model: ProjectFile,
-              as: "files",
-              attributes: showLimitedResponse ? ["id", "filename"] : undefined,
-              required: false,
-            },
-            {
-              model: ProjectImage,
-              as: "images",
-              attributes: showLimitedResponse ? ["id", "filename"] : undefined,
-              required: false,
-            },
-          ],
-        },
-        {
-          model: Device,
-          as: "device",
-          required: true,
-          // Include all device attributes when showing full response
-          attributes: showLimitedResponse
-            ? ["id", "deviceName", "serialNumber"]
-            : undefined,
-        },
-      ],
-      limit: limit,
-      offset: offset,
-      order: [["createdAt", "DESC"]],
-      distinct: true,
-      col: "id",
+  // If filtering by deviceId, verify it belongs to the user
+  if (deviceId) {
+    const device = await Device.findOne({
+      where: { 
+        id: deviceId,
+        userId: userId // CRITICAL: Ensure device belongs to user
+      },
+      attributes: ["id"],
     });
 
-    // Transform the response based on showLimitedResponse flag
-    const projectsWithData = rows.map((acquisition) => {
-      const acquisitionData = acquisition.toJSON();
+    if (!device) {
+      // If device doesn't exist or doesn't belong to user, return empty results
+      return {
+        projects: [],
+        totalProjectsAcquired: 0,
+        currentPage: page,
+        totalPages: 0,
+        filteredByDevice: true,
+        deviceId: deviceId,
+        error: "Device not found or does not belong to user"
+      };
+    }
 
-      // Transform images to URL strings
-      let imageUrls = [];
-      if (acquisitionData.project && acquisitionData.project.images) {
-        imageUrls = acquisitionData.project.images.map(
-          (image) =>
-            `/projects/${acquisitionData.project.id}/images/${image.filename}`
-        );
-      }
-
-      if (showLimitedResponse) {
-        // Limited response - only when serialNumber is passed alone
-        return {
-          id: acquisitionData.id,
-          project: {
-            id: acquisitionData.project.id,
-            name: acquisitionData.project.name,
-            projectId: acquisitionData.project.projectId,
-            files: acquisitionData.project.files || [],
-            images: imageUrls,
-          },
-          device: {
-            id: acquisitionData.device.id,
-            deviceName: acquisitionData.device.deviceName,
-            serialNumber: acquisitionData.device.serialNumber,
-          },
-        };
-      } else {
-        // Full response - return all fields from the models
-        return {
-          ...acquisitionData, // Include all UserProjectAcquisition fields
-          project: {
-            ...acquisitionData.project, // Include all Project fields
-            files: acquisitionData.project.files || [],
-            images: imageUrls, // Replace original images array with URLs
-          },
-          device: {
-            ...acquisitionData.device, // Include all Device fields
-          },
-        };
-      }
-    });
-
-    return {
-      projects: projectsWithData,
-      totalProjectsAcquired: count,
-      currentPage: page,
-      totalPages: Math.ceil(count / limit),
-      filteredByDevice: !!(deviceId || serialNumber),
-      deviceId:
-        deviceId || (serialNumber ? projectsWithData[0]?.device?.id : null),
-    };
+    targetDeviceId = deviceId;
+    whereClause.deviceId = deviceId;
   }
+
+  // If filtering by serialNumber, verify device belongs to user
+  if (serialNumber) {
+    const device = await Device.findOne({
+      where: { 
+        serialNumber: serialNumber,
+        userId: userId // CRITICAL: Ensure device belongs to user
+      },
+      attributes: ["id"],
+    });
+
+    if (!device) {
+      // If device with serial number doesn't exist or doesn't belong to user
+      return {
+        projects: [],
+        totalProjectsAcquired: 0,
+        currentPage: page,
+        totalPages: 0,
+        filteredByDevice: true,
+        serialNumber: serialNumber,
+        error: "Device not found or does not belong to user"
+      };
+    }
+
+    targetDeviceId = device.id;
+    whereClause.deviceId = device.id;
+  }
+
+  const { count, rows } = await UserProjectAcquisition.findAndCountAll({
+    where: whereClause,
+    // Include all attributes for full response, limit for limited response
+    attributes: showLimitedResponse ? ["id", "createdAt"] : undefined,
+    include: [
+      {
+        model: Project,
+        as: "project",
+        attributes: showLimitedResponse
+          ? ["id", "name", "projectId"]
+          : undefined,
+        include: [
+          {
+            model: ProjectFile,
+            as: "files",
+            attributes: showLimitedResponse ? ["id", "filename"] : undefined,
+            required: false,
+          },
+          {
+            model: ProjectImage,
+            as: "images",
+            attributes: showLimitedResponse ? ["id", "filename"] : undefined,
+            required: false,
+          },
+        ],
+      },
+      {
+        model: Device,
+        as: "device",
+        required: true,
+        // Add additional where clause to ensure device belongs to user
+        where: {
+          userId: userId // CRITICAL: Double-check device ownership
+        },
+        attributes: showLimitedResponse
+          ? ["id", "deviceName", "serialNumber"]
+          : undefined,
+      },
+    ],
+    limit: limit,
+    offset: offset,
+    order: [["createdAt", "DESC"]],
+    distinct: true,
+    col: "id",
+  });
+
+  // Transform the response based on showLimitedResponse flag
+  const projectsWithData = rows.map((acquisition) => {
+    const acquisitionData = acquisition.toJSON();
+
+    // Transform images to URL strings
+    let imageUrls = [];
+    if (acquisitionData.project && acquisitionData.project.images) {
+      imageUrls = acquisitionData.project.images.map(
+        (image) =>
+          `/projects/${acquisitionData.project.id}/images/${image.filename}`
+      );
+    }
+
+    if (showLimitedResponse) {
+      // Limited response - only when serialNumber is passed alone
+      return {
+        id: acquisitionData.id,
+        project: {
+          id: acquisitionData.project.id,
+          name: acquisitionData.project.name,
+          projectId: acquisitionData.project.projectId,
+          files: acquisitionData.project.files || [],
+          images: imageUrls,
+        },
+        device: {
+          id: acquisitionData.device.id,
+          deviceName: acquisitionData.device.deviceName,
+          serialNumber: acquisitionData.device.serialNumber,
+        },
+      };
+    } else {
+      // Full response - return all fields from the models
+      return {
+        ...acquisitionData, // Include all UserProjectAcquisition fields
+        project: {
+          ...acquisitionData.project, // Include all Project fields
+          files: acquisitionData.project.files || [],
+          images: imageUrls, // Replace original images array with URLs
+        },
+        device: {
+          ...acquisitionData.device, // Include all Device fields
+        },
+      };
+    }
+  });
+
+  return {
+    projects: projectsWithData,
+    totalProjectsAcquired: count,
+    currentPage: page,
+    totalPages: Math.ceil(count / limit),
+    filteredByDevice: !!(deviceId || serialNumber),
+    deviceId: targetDeviceId,
+  };
+}
 
   async removeAcquiredProject(userId, projectId, deviceId) {
     const acquisition = await UserProjectAcquisition.findOne({

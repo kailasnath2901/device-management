@@ -1180,43 +1180,71 @@ class ProjectController {
     }
   }
 
-  async getAcquiredProjects(req, res) {
-    try {
-      const userId = req.user.id;
-      const { page = 1, limit = 10, deviceId, serialNumber } = req.query;
+ async getAcquiredProjects(req, res) {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 10, deviceId, serialNumber } = req.query;
 
-      // Validate deviceId if provided
-      if (deviceId && isNaN(parseInt(deviceId))) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid device ID provided",
-        });
-      }
-
-      const result = await ProjectService.getAcquiredProjects(userId, {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        deviceId: deviceId ? parseInt(deviceId) : null,
-        serialNumber: serialNumber,
-      });
-
-      res.json({
-        success: true,
-        projects: result.projects,
-        totalAcquiredProjects: result.totalProjectsAcquired,
-        currentPage: result.currentPage,
-        totalPages: result.totalPages,
-        filteredByDevice: !!deviceId,
-        deviceId: deviceId ? parseInt(deviceId) : null,
-      });
-    } catch (error) {
-      console.error("Get Acquired Projects Error:", error);
-      res.status(500).json({
+    // Validate deviceId if provided
+    if (deviceId && isNaN(parseInt(deviceId))) {
+      return res.status(400).json({
         success: false,
-        message: error.message,
+        message: "Invalid device ID provided",
       });
     }
+
+    // Validate that either both or neither deviceId and serialNumber are provided
+    // Or handle the case where both are provided consistently
+    if (deviceId && serialNumber) {
+      // Optional: You might want to verify they refer to the same device
+      const device = await Device.findOne({
+        where: {
+          id: parseInt(deviceId),
+          serialNumber: serialNumber,
+          userId: userId
+        }
+      });
+
+      if (!device) {
+        return res.status(400).json({
+          success: false,
+          message: "Device ID and serial number don't match or device doesn't belong to user",
+        });
+      }
+    }
+
+    const result = await ProjectService.getAcquiredProjects(userId, {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      deviceId: deviceId ? parseInt(deviceId) : null,
+      serialNumber: serialNumber,
+    });
+
+    // Check if there was an error in the service response
+    if (result.error) {
+      return res.status(403).json({
+        success: false,
+        message: result.error,
+      });
+    }
+
+    res.json({
+      success: true,
+      projects: result.projects,
+      totalAcquiredProjects: result.totalProjectsAcquired,
+      currentPage: result.currentPage,
+      totalPages: result.totalPages,
+      filteredByDevice: result.filteredByDevice,
+      deviceId: result.deviceId,
+    });
+  } catch (error) {
+    console.error("Get Acquired Projects Error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
+}
 
   async removeAcquiredProject(req, res) {
     try {
