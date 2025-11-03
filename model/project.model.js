@@ -71,9 +71,10 @@ const Project = sequelize.define(
       allowNull: false,
       defaultValue: "easy",
     },
+
     categoryId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true, // Change to true temporarily
       field: "category_id",
       references: {
         model: "categories",
@@ -211,6 +212,8 @@ Project.hasMany(ProjectImage, {
 Project.belongsTo(Category, {
   foreignKey: "categoryId",
   as: "category",
+  onDelete: "RESTRICT", // or "NO ACTION"
+  onUpdate: "CASCADE",
 });
 
 // Many-to-many relationship between Project and Component

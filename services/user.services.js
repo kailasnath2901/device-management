@@ -679,6 +679,284 @@ class UserService {
     };
   }
 
+  async uploadProfileAvatar(userId, file) {
+    try {
+      if (!file) {
+        throw new Error("No file provided");
+      }
+
+      const user = await User.scope("withDeleted").findOne({
+        where: { id: userId }
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      // Delete old avatar if exists
+      if (user.profileAvatar) {
+        const oldAvatarPath = path.join(
+          __dirname,
+          '../uploads/users',
+          userId.toString(),
+          user.profileAvatar.split('/').pop()
+        );
+
+        if (fs.existsSync(oldAvatarPath)) {
+          fs.unlinkSync(oldAvatarPath);
+        }
+      }
+
+      // Store relative path
+      const avatarPath = `uploads/users/${userId}/${file.filename}`;
+
+      await user.update({ profileAvatar: avatarPath });
+
+      return {
+        success: true,
+        message: "Avatar uploaded successfully",
+        profileAvatar: avatarPath,
+      };
+    } catch (error) {
+      // Clean up uploaded file if there's an error
+      if (file && fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get user profile avatar
+   */
+  async getProfileAvatar(userId) {
+    try {
+      const user = await User.scope("withDeleted").findOne({
+        where: { id: userId },
+        attributes: ["id", "username", "profileAvatar"]
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      if (!user.profileAvatar) {
+        return {
+          success: false,
+          message: "No avatar found for this user",
+          profileAvatar: null
+        };
+      }
+
+      return {
+        success: true,
+        profileAvatar: user.profileAvatar,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Delete user profile avatar
+   */
+  async deleteProfileAvatar(userId) {
+    try {
+      const user = await User.scope("withDeleted").findOne({
+        where: { id: userId }
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      if (!user.profileAvatar) {
+        throw new Error("No avatar to delete");
+      }
+
+      // Delete file from storage
+      const avatarPath = path.join(
+        __dirname,
+        '../uploads/users',
+        userId.toString(),
+        user.profileAvatar.split('/').pop()
+      );
+
+      if (fs.existsSync(avatarPath)) {
+        fs.unlinkSync(avatarPath);
+      }
+
+      // Update user record
+      await user.update({ profileAvatar: null });
+
+      return {
+        success: true,
+        message: "Avatar deleted successfully",
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // ============== EXTRA DATA METHODS ==============
+
+  /**
+   * Set/Update extradata field
+   */
+  async updateExtraData(userId, fieldName, data) {
+    try {
+      if (!["extradata1", "extradata2", "extradata3"].includes(fieldName)) {
+        throw new Error("Invalid field name. Must be extradata1, extradata2, or extradata3");
+      }
+
+      const user = await User.scope("withDeleted").findOne({
+        where: { id: userId }
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      // Validate data is JSON serializable
+      if (data !== null && typeof data === "object") {
+        try {
+          JSON.stringify(data);
+        } catch (e) {
+          throw new Error("Data must be JSON serializable");
+        }
+      }
+
+      await user.update({ [fieldName]: data });
+
+      return {
+        success: true,
+        message: `${fieldName} updated successfully`,
+        [fieldName]: data,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get single extradata field
+   */
+  async getExtraData(userId, fieldName) {
+    try {
+      if (!["extradata1", "extradata2", "extradata3"].includes(fieldName)) {
+        throw new Error("Invalid field name. Must be extradata1, extradata2, or extradata3");
+      }
+
+      const user = await User.scope("withDeleted").findOne({
+        where: { id: userId },
+        attributes: ["id", fieldName]
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      return {
+        success: true,
+        [fieldName]: user[fieldName] || null,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get all extradata fields
+   */
+  async getAllExtraData(userId) {
+    try {
+      const user = await User.scope("withDeleted").findOne({
+        where: { id: userId },
+        attributes: ["id", "extradata1", "extradata2", "extradata3"]
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      return {
+        success: true,
+        extradata1: user.extradata1 || null,
+        extradata2: user.extradata2 || null,
+        extradata3: user.extradata3 || null,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Delete single extradata field
+   */
+  async deleteExtraData(userId, fieldName) {
+    try {
+      if (!["extradata1", "extradata2", "extradata3"].includes(fieldName)) {
+        throw new Error("Invalid field name. Must be extradata1, extradata2, or extradata3");
+      }
+
+      const user = await User.scope("withDeleted").findOne({
+        where: { id: userId }
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      if (!user[fieldName]) {
+        throw new Error(`${fieldName} is already empty`);
+      }
+
+      await user.update({ [fieldName]: null });
+
+      return {
+        success: true,
+        message: `${fieldName} deleted successfully`,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Merge/Update nested data in extradata field
+   */
+  async mergeExtraData(userId, fieldName, dataToMerge) {
+    try {
+      if (!["extradata1", "extradata2", "extradata3"].includes(fieldName)) {
+        throw new Error("Invalid field name. Must be extradata1, extradata2, or extradata3");
+      }
+
+      const user = await User.scope("withDeleted").findOne({
+        where: { id: userId }
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      // Get current data
+      const currentData = user[fieldName] || {};
+
+      // Merge with new data
+      const mergedData = { ...currentData, ...dataToMerge };
+
+      await user.update({ [fieldName]: mergedData });
+
+      return {
+        success: true,
+        message: `${fieldName} merged successfully`,
+        [fieldName]: mergedData,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
   incrementFirmwareVersion(version) {
     const versionNum = parseFloat(version);
     return (versionNum + 0.1).toFixed(1);

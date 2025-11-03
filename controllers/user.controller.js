@@ -388,4 +388,207 @@ exports.getAcquiredProjects = async (req, res) => {
       message: error.message,
     });
   }
+}
+
+
+  exports.uploadProfileAvatar = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const result = await userProfileService.uploadProfileAvatar(userId, req.file);
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      profileAvatar: result.profileAvatar,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Get profile avatar
+ * GET /api/user/avatar
+ */
+exports.getProfileAvatar = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const result = await userProfileService.getProfileAvatar(userId);
+
+    res.json({
+      success: result.success,
+      message: result.message,
+      profileAvatar: result.profileAvatar,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Delete profile avatar
+ * DELETE /api/user/avatar
+ */
+exports.deleteProfileAvatar = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const result = await userProfileService.deleteProfileAvatar(userId);
+
+    res.json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// ============== EXTRA DATA ENDPOINTS ==============
+
+/**
+ * Update extradata field
+ * PUT /api/user/extradata/:fieldName
+ * Body: { data: any }
+ */
+exports.updateExtraData = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { fieldName } = req.params;
+    const { data } = req.body;
+
+    if (data === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "Data field is required",
+      });
+    }
+
+    const result = await userProfileService.updateExtraData(userId, fieldName, data);
+
+    res.json({
+      success: true,
+      message: result.message,
+      [fieldName]: result[fieldName],
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Get single extradata field
+ * GET /api/user/extradata/:fieldName
+ */
+exports.getExtraData = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { fieldName } = req.params;
+
+    const result = await userProfileService.getExtraData(userId, fieldName);
+
+    res.json({
+      success: true,
+      [fieldName]: result[fieldName],
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Get all extradata fields
+ * GET /api/user/extradata
+ */
+exports.getAllExtraData = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const result = await userProfileService.getAllExtraData(userId);
+
+    res.json({
+      success: true,
+      extradata1: result.extradata1,
+      extradata2: result.extradata2,
+      extradata3: result.extradata3,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Delete extradata field
+ * DELETE /api/user/extradata/:fieldName
+ */
+exports.deleteExtraData = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { fieldName } = req.params;
+
+    const result = await userProfileService.deleteExtraData(userId, fieldName);
+
+    res.json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Merge/Update nested data in extradata field
+ * PATCH /api/user/extradata/:fieldName/merge
+ * Body: { data: object }
+ */
+exports.mergeExtraData = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { fieldName } = req.params;
+    const { data } = req.body;
+
+    if (!data || typeof data !== "object") {
+      return res.status(400).json({
+        success: false,
+        message: "Data field is required and must be an object",
+      });
+    }
+
+    const result = await userProfileService.mergeExtraData(userId, fieldName, data);
+
+    res.json({
+      success: true,
+      message: result.message,
+      [fieldName]: result[fieldName],
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };

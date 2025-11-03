@@ -4,6 +4,7 @@ const router = express.Router();
 const projectController = require("../controllers/projects.controller");
 const { authenticate, authorizeRoles } = require("../middleware/auth");
 const fileUpload = require("../middleware/fileUpload");
+const projectRatingController = require("../controllers/project-rating-controller");
 
 
 // Alternative routing structure with more explicit paths:
@@ -41,6 +42,57 @@ router.get("/user/devices", authenticate, projectController.getUserDevices);
 
 router.get('/categories/search', projectController.searchCategories);
 router.get('/components/search', projectController.searchComponents);
+
+router.post(
+    "/:projectId/rate",
+    authenticate,
+    projectRatingController.addRating
+);
+
+/**
+ * Get user's rating for a specific project
+ * GET /api/projects/:projectId/my-rating
+ */
+router.get(
+    "/:projectId/my-rating",
+    authenticate,
+    projectRatingController.getUserRating
+);
+
+
+router.get(
+    "/:projectId/ratings",
+    authenticate,
+    projectRatingController.getProjectRatings
+);
+
+
+router.get(
+    "/:projectId/rating-stats",
+    authenticate,
+    projectRatingController.getRatingStats
+);
+
+
+router.delete(
+    "/rating/:ratingId",
+    authenticate,
+    projectRatingController.deleteRating
+);
+
+
+router.get(
+    "/user/my-ratings",
+    authenticate,
+    projectRatingController.getUserRatings
+);
+
+
+router.get(
+    "/top-rated",
+    authenticate,
+    projectRatingController.getTopRatedProjects
+);
 
 
 

@@ -7,6 +7,7 @@ const {
   performInitialSetup,
 } = require("../services/initial-setup.service");
 
+const { createUserAvatarUpload, handleAvatarUploadError } = require("../middleware/profileUpload");
 // Public routes
 router.post("/signup", userController.signup);
 router.post("/login", userController.login);
@@ -95,5 +96,67 @@ router.get(
   authenticate,
   userController.getAcquiredProjects
 );
+
+
+/**
+ * Upload/Update profile avatar
+ * POST /api/user/avatar/upload
+ * Body: FormData with 'avatar' file
+ */
+router.post(
+  "/avatar/upload",
+  authenticate,
+  (req, res, next) => createUserAvatarUpload(req, res, next),
+  handleAvatarUploadError,
+  userController.uploadProfileAvatar
+);
+
+/**
+ * Get user profile avatar
+ * GET /api/user/avatar
+ */
+router.get("/avatar", authenticate, userController.getProfileAvatar);
+
+/**
+ * Delete profile avatar
+ * DELETE /api/user/avatar
+ */
+router.delete("/avatar", authenticate, userController.deleteProfileAvatar);
+
+/**
+ * Update extradata field
+ * PUT /api/user/extradata/:fieldName
+ * Params: fieldName (extradata1, extradata2, extradata3)
+ * Body: { data: any }
+ */
+router.put("/extradata/:fieldName", authenticate, userController.updateExtraData);
+
+/**
+ * Get single extradata field
+ * GET /api/user/extradata/:fieldName
+ * Params: fieldName (extradata1, extradata2, extradata3)
+ */
+router.get("/extradata/:fieldName", authenticate, userController.getExtraData);
+
+/**
+ * Get all extradata fields
+ * GET /api/user/extradata
+ */
+router.get("/extradata", authenticate, userController.getAllExtraData);
+
+/**
+ * Delete extradata field
+ * DELETE /api/user/extradata/:fieldName
+ * Params: fieldName (extradata1, extradata2, extradata3)
+ */
+router.delete("/extradata/:fieldName", authenticate, userController.deleteExtraData);
+
+/**
+ * Merge/Update nested data in extradata field
+ * PATCH /api/user/extradata/:fieldName/merge
+ * Params: fieldName (extradata1, extradata2, extradata3)
+ * Body: { data: object }
+ */
+router.patch("/extradata/:fieldName/merge", authenticate, userController.mergeExtraData);
 
 module.exports = router;

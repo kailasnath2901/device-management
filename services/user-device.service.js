@@ -565,6 +565,272 @@ class DeviceService {
       throw new Error(`Error fetching device stats: ${error.message}`);
     }
   }
+
+
+    async uploadDeviceAvatar(deviceId, file) {
+    try {
+      if (!file) {
+        throw new Error("No file provided");
+      }
+
+      const device = await Device.findByPk(deviceId);
+
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      // Delete old avatar if exists
+      if (device.deviceAvatar) {
+        const oldAvatarPath = path.join(
+          __dirname,
+          '../uploads/devices',
+          deviceId.toString(),
+          device.deviceAvatar.split('/').pop()
+        );
+
+        if (fs.existsSync(oldAvatarPath)) {
+          fs.unlinkSync(oldAvatarPath);
+        }
+      }
+
+      // Store relative path
+      const avatarPath = `uploads/devices/${deviceId}/${file.filename}`;
+
+      await device.update({ deviceAvatar: avatarPath });
+
+      return {
+        success: true,
+        message: "Avatar uploaded successfully",
+        deviceAvatar: avatarPath,
+      };
+    } catch (error) {
+      // Clean up uploaded file if there's an error
+      if (file && fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get device avatar
+   */
+  async getDeviceAvatar(deviceId) {
+    try {
+      const device = await Device.findByPk(deviceId, {
+        attributes: ["id", "deviceName", "deviceAvatar"]
+      });
+
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      if (!device.deviceAvatar) {
+        return {
+          success: false,
+          message: "No avatar found for this device",
+          deviceAvatar: null
+        };
+      }
+
+      return {
+        success: true,
+        deviceAvatar: device.deviceAvatar,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Delete device avatar
+   */
+  async deleteDeviceAvatar(deviceId) {
+    try {
+      const device = await Device.findByPk(deviceId);
+
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      if (!device.deviceAvatar) {
+        throw new Error("No avatar to delete");
+      }
+
+      // Delete file from storage
+      const avatarPath = path.join(
+        __dirname,
+        '../uploads/devices',
+        deviceId.toString(),
+        device.deviceAvatar.split('/').pop()
+      );
+
+      if (fs.existsSync(avatarPath)) {
+        fs.unlinkSync(avatarPath);
+      }
+
+      // Update device record
+      await device.update({ deviceAvatar: null });
+
+      return {
+        success: true,
+        message: "Avatar deleted successfully",
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // ============== EXTRA DATA METHODS ==============
+
+  /**
+   * Set/Update extradata field
+   */
+  async updateExtraData(deviceId, fieldName, data) {
+    try {
+      if (!["extradata1", "extradata2", "extradata3"].includes(fieldName)) {
+        throw new Error("Invalid field name. Must be extradata1, extradata2, or extradata3");
+      }
+
+      const device = await Device.findByPk(deviceId);
+
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      // Validate data is JSON serializable
+      if (data !== null && typeof data === "object") {
+        try {
+          JSON.stringify(data);
+        } catch (e) {
+          throw new Error("Data must be JSON serializable");
+        }
+      }
+
+      await device.update({ [fieldName]: data });
+
+      return {
+        success: true,
+        message: `${fieldName} updated successfully`,
+        [fieldName]: data,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get single extradata field
+   */
+  async getExtraData(deviceId, fieldName) {
+    try {
+      if (!["extradata1", "extradata2", "extradata3"].includes(fieldName)) {
+        throw new Error("Invalid field name. Must be extradata1, extradata2, or extradata3");
+      }
+
+      const device = await Device.findByPk(deviceId, {
+        attributes: ["id", fieldName]
+      });
+
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      return {
+        success: true,
+        [fieldName]: device[fieldName] || null,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get all extradata fields
+   */
+  async getAllExtraData(deviceId) {
+    try {
+      const device = await Device.findByPk(deviceId, {
+        attributes: ["id", "extradata1", "extradata2", "extradata3"]
+      });
+
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      return {
+        success: true,
+        extradata1: device.extradata1 || null,
+        extradata2: device.extradata2 || null,
+        extradata3: device.extradata3 || null,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Delete single extradata field
+   */
+  async deleteExtraData(deviceId, fieldName) {
+    try {
+      if (!["extradata1", "extradata2", "extradata3"].includes(fieldName)) {
+        throw new Error("Invalid field name. Must be extradata1, extradata2, or extradata3");
+      }
+
+      const device = await Device.findByPk(deviceId);
+
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      if (!device[fieldName]) {
+        throw new Error(`${fieldName} is already empty`);
+      }
+
+      await device.update({ [fieldName]: null });
+
+      return {
+        success: true,
+        message: `${fieldName} deleted successfully`,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Merge/Update nested data in extradata field
+   */
+  async mergeExtraData(deviceId, fieldName, dataToMerge) {
+    try {
+      if (!["extradata1", "extradata2", "extradata3"].includes(fieldName)) {
+        throw new Error("Invalid field name. Must be extradata1, extradata2, or extradata3");
+      }
+
+      const device = await Device.findByPk(deviceId);
+
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      // Get current data
+      const currentData = device[fieldName] || {};
+
+      // Merge with new data
+      const mergedData = { ...currentData, ...dataToMerge };
+
+      await device.update({ [fieldName]: mergedData });
+
+      return {
+        success: true,
+        message: `${fieldName} merged successfully`,
+        [fieldName]: mergedData,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
 }
 
 module.exports = new DeviceService();
