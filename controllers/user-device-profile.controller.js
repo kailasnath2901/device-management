@@ -1,6 +1,7 @@
 // controllers/device-profile.controller.js
 const deviceProfileService = require("../services/user-device.service");
-
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Upload device avatar

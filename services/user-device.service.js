@@ -5,6 +5,8 @@ const { Op } = require("sequelize");
 const sequelize = require("../config/sequelize");
 const UserProjectAcquisition = require("../model/user-project-acquisition.model");
 const Project = require("../model/project.model");
+const fs = require('fs');
+const path = require('path');
 
 class DeviceService {
   // Admin creates devices without assigning to users
