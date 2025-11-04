@@ -390,17 +390,27 @@ exports.getAcquiredProjects = async (req, res) => {
   }
 }
 
+// controllers/user.controller.js
+const userProfileService = require("../services/user-profile.service");
 
-  exports.uploadProfileAvatar = async (req, res) => {
+exports.uploadProfileAvatar = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const result = await userService.uploadProfileAvatar(userId, req.file);
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file provided"
+      });
+    }
+
+    const result = await userProfileService.uploadProfileAvatar(userId, req.file);
 
     res.status(200).json({
       success: true,
       message: result.message,
       profileAvatar: result.profileAvatar,
+      publicUrl: result.publicUrl  // ✅ Full URL
     });
   } catch (error) {
     res.status(400).json({
@@ -410,20 +420,16 @@ exports.getAcquiredProjects = async (req, res) => {
   }
 };
 
-/**
- * Get profile avatar
- * GET /api/user/avatar
- */
 exports.getProfileAvatar = async (req, res) => {
   try {
     const userId = req.user.id;
-
-    const result = await userService.getProfileAvatar(userId);
+    const result = await userProfileService.getProfileAvatar(userId);
 
     res.json({
       success: result.success,
       message: result.message,
       profileAvatar: result.profileAvatar,
+      publicUrl: result.publicUrl  // ✅ Full URL
     });
   } catch (error) {
     res.status(400).json({
@@ -433,15 +439,10 @@ exports.getProfileAvatar = async (req, res) => {
   }
 };
 
-/**
- * Delete profile avatar
- * DELETE /api/user/avatar
- */
 exports.deleteProfileAvatar = async (req, res) => {
   try {
     const userId = req.user.id;
-
-    const result = await userService.deleteProfileAvatar(userId);
+    const result = await userProfileService.deleteProfileAvatar(userId);
 
     res.json({
       success: true,
@@ -454,6 +455,8 @@ exports.deleteProfileAvatar = async (req, res) => {
     });
   }
 };
+
+// ... other methods
 
 // ============== EXTRA DATA ENDPOINTS ==============
 
