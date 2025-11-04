@@ -1,7 +1,6 @@
 // controllers/device-profile.controller.js
 const deviceProfileService = require("../services/user-device.service");
 
-// ============== AVATAR ENDPOINTS ==============
 
 /**
  * Upload device avatar
@@ -19,12 +18,20 @@ exports.uploadDeviceAvatar = async (req, res) => {
       });
     }
 
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file provided"
+      });
+    }
+
     const result = await deviceProfileService.uploadDeviceAvatar(deviceId, req.file);
 
     res.status(200).json({
       success: true,
       message: result.message,
       deviceAvatar: result.deviceAvatar,
+      publicUrl: result.publicUrl  // ✅ Full URL - same as user profile
     });
   } catch (error) {
     res.status(400).json({
@@ -48,6 +55,7 @@ exports.getDeviceAvatar = async (req, res) => {
       success: result.success,
       message: result.message,
       deviceAvatar: result.deviceAvatar,
+      publicUrl: result.publicUrl  // ✅ Full URL - same as user profile
     });
   } catch (error) {
     res.status(400).json({

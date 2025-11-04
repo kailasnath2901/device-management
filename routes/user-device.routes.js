@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const deviceController = require('../controllers/user-device.controller');
 const { authenticate, authorizeRoles } = require('../middleware/auth');
-const { createDeviceAvatarUpload, handleDeviceAvatarUploadError } = require('../middleware/deviceAvatarUpload');
+const { uploadDeviceAvatar, handleDeviceAvatarUploadError } = require('../middleware/deviceAvatarUpload');
 const deviceProfileController = require('../controllers/user-device-profile.controller');
 
 router.post('/admin/create-device',
@@ -80,19 +80,27 @@ router.get('/status/:serialNumber',
 );
 
 
-/**
- * Upload/Update device avatar
- * POST /api/user-devices/:deviceId/avatar/upload
- */
+
 router.post(
   '/:deviceId/avatar/upload',
   authenticate,
   authorizeRoles('admin', 'super_admin'),
-  (req, res, next) => createDeviceAvatarUpload(req, res, next),
+  uploadDeviceAvatar,  // ✅ Use directly, not as a function call
   handleDeviceAvatarUploadError,
   deviceProfileController.uploadDeviceAvatar
 );
-
+/**
+ * Update device avatar
+ * POST /api/user-devices/:deviceId/avatar/upload
+ */
+router.patch(
+  '/:deviceId/avatar/update',
+  authenticate,
+  authorizeRoles('admin', 'super_admin'),
+  uploadDeviceAvatar,  // ✅ Use directly, not as a function call
+  handleDeviceAvatarUploadError,
+  deviceProfileController.uploadDeviceAvatar
+);
 /**
  * Get device avatar
  * GET /api/user-devices/:deviceId/avatar
