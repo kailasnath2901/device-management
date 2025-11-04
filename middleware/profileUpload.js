@@ -1,7 +1,7 @@
 // middleware/uploadUserAvatar.js - PROPERLY FIXED
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
+const fs = require("fs");
 
 // Configure storage - use temp directory first
 const storage = multer.diskStorage({

@@ -11,6 +11,8 @@ const EmailService = require("./email.services");
 const Device = require("../model/user-device.model");
 const Ticket = require("../model/ticket.model");
 const OTP = require("../model/otp.model");
+const fs = require('fs');
+const path = require('path');
 
 class UserService {
   async signup(userData) {
