@@ -395,136 +395,136 @@ class UserService {
 
 
   async forceDeleteUser(requestingUser, targetUserId) {
-  // Check permissions
-  if (!["admin", "super_admin"].includes(requestingUser.role)) {
-    throw new Error("Unauthorized to delete users");
-  }
+    // Check permissions
+    if (!["admin", "super_admin"].includes(requestingUser.role)) {
+      throw new Error("Unauthorized to delete users");
+    }
 
-  // Find target user (including inactive ones)
-  const targetUser = await User.scope("withDeleted").findOne({
-    where: { id: targetUserId },
-  });
-
-  if (!targetUser) {
-    throw new Error("User not found");
-  }
-
-  // Prevent deletion of super_admin by admin
-  if (requestingUser.role === "admin" && targetUser.role === "super_admin") {
-    throw new Error("Admins cannot delete super admins");
-  }
-
-  // Prevent deletion of admin by admin
-  if (requestingUser.role === "admin" && targetUser.role === "admin") {
-    throw new Error("Admins cannot delete other admins");
-  }
-
-  // Prevent self-deletion
-  if (requestingUser.id === targetUser.id) {
-    throw new Error("Cannot delete your own account");
-  }
-
-  const deletedUserInfo = {
-    id: targetUser.id,
-    username: targetUser.username,
-    email: targetUser.email,
-    role: targetUser.role,
-  };
-
-  // Start transaction for safe deletion
-  const transaction = await User.sequelize.transaction();
-
-  try {
-    // Get counts for reporting
-    const acquisitionsCount = await UserProjectAcquisition.count({
-      where: { userId: targetUserId },
-      transaction,
+    // Find target user (including inactive ones)
+    const targetUser = await User.scope("withDeleted").findOne({
+      where: { id: targetUserId },
     });
 
-    const devicesCount = await Device.count({
-      where: { userId: targetUserId },
-      transaction,
-    });
+    if (!targetUser) {
+      throw new Error("User not found");
+    }
 
-    // Delete all associated data in correct order (respecting foreign key constraints)
+    // Prevent deletion of super_admin by admin
+    if (requestingUser.role === "admin" && targetUser.role === "super_admin") {
+      throw new Error("Admins cannot delete super admins");
+    }
 
-    // 1. Update tickets assigned to this user (clear references)
-    await Ticket.update(
-      { assignedTo: null },
-      {
-        where: { assignedTo: targetUserId },
-        transaction,
-      }
-    );
+    // Prevent deletion of admin by admin
+    if (requestingUser.role === "admin" && targetUser.role === "admin") {
+      throw new Error("Admins cannot delete other admins");
+    }
 
-    // 2. Update tickets resolved by this user (clear references)
-    await Ticket.update(
-      { resolvedBy: null },
-      {
-        where: { resolvedBy: targetUserId },
-        transaction,
-      }
-    );
+    // Prevent self-deletion
+    if (requestingUser.id === targetUser.id) {
+      throw new Error("Cannot delete your own account");
+    }
 
-    // 3. Update tickets escalated to this user (clear references)
-    await Ticket.update(
-      { escalatedTo: null },
-      {
-        where: { escalatedTo: targetUserId },
-        transaction,
-      }
-    );
+    const deletedUserInfo = {
+      id: targetUser.id,
+      username: targetUser.username,
+      email: targetUser.email,
+      role: targetUser.role,
+    };
 
-    // 4. Delete user's tickets (after clearing references)
-    await Ticket.destroy({
-      where: { userId: targetUserId },
-      transaction,
-    });
+    // Start transaction for safe deletion
+    const transaction = await User.sequelize.transaction();
 
-    // 5. Delete user project acquisitions first (before devices due to FK constraint)
-    if (UserProjectAcquisition) {
-      await UserProjectAcquisition.destroy({
+    try {
+      // Get counts for reporting
+      const acquisitionsCount = await UserProjectAcquisition.count({
         where: { userId: targetUserId },
         transaction,
       });
-    }
 
-    // 6. Delete user's devices (after project acquisitions)
-    await Device.destroy({
-      where: { userId: targetUserId },
-      transaction,
-    });
-
-    // 7. Delete OTP records
-    if (OTP) {
-      await OTP.destroy({
-        where: { email: targetUser.email },
+      const devicesCount = await Device.count({
+        where: { userId: targetUserId },
         transaction,
       });
+
+      // Delete all associated data in correct order (respecting foreign key constraints)
+
+      // 1. Update tickets assigned to this user (clear references)
+      await Ticket.update(
+        { assignedTo: null },
+        {
+          where: { assignedTo: targetUserId },
+          transaction,
+        }
+      );
+
+      // 2. Update tickets resolved by this user (clear references)
+      await Ticket.update(
+        { resolvedBy: null },
+        {
+          where: { resolvedBy: targetUserId },
+          transaction,
+        }
+      );
+
+      // 3. Update tickets escalated to this user (clear references)
+      await Ticket.update(
+        { escalatedTo: null },
+        {
+          where: { escalatedTo: targetUserId },
+          transaction,
+        }
+      );
+
+      // 4. Delete user's tickets (after clearing references)
+      await Ticket.destroy({
+        where: { userId: targetUserId },
+        transaction,
+      });
+
+      // 5. Delete user project acquisitions first (before devices due to FK constraint)
+      if (UserProjectAcquisition) {
+        await UserProjectAcquisition.destroy({
+          where: { userId: targetUserId },
+          transaction,
+        });
+      }
+
+      // 6. Delete user's devices (after project acquisitions)
+      await Device.destroy({
+        where: { userId: targetUserId },
+        transaction,
+      });
+
+      // 7. Delete OTP records
+      if (OTP) {
+        await OTP.destroy({
+          where: { email: targetUser.email },
+          transaction,
+        });
+      }
+
+      // 8. Finally, delete the user completely (hard delete)
+      await User.scope("withDeleted").destroy({
+        where: { id: targetUserId },
+        transaction,
+      });
+
+      await transaction.commit();
+
+      return {
+        success: true,
+        message: "User and all associated data deleted permanently",
+        deletedUser: deletedUserInfo,
+        deletedData: {
+          projectAcquisitions: acquisitionsCount,
+          devices: devicesCount,
+        },
+      };
+    } catch (error) {
+      await transaction.rollback();
+      throw new Error(`Failed to delete user: ${error.message}`);
     }
-
-    // 8. Finally, delete the user completely (hard delete)
-    await User.scope("withDeleted").destroy({
-      where: { id: targetUserId },
-      transaction,
-    });
-
-    await transaction.commit();
-
-    return {
-      success: true,
-      message: "User and all associated data deleted permanently",
-      deletedUser: deletedUserInfo,
-      deletedData: {
-        projectAcquisitions: acquisitionsCount,
-        devices: devicesCount,
-      },
-    };
-  } catch (error) {
-    await transaction.rollback();
-    throw new Error(`Failed to delete user: ${error.message}`);
   }
-}
 
 
   // Method to clean up existing soft-deleted records
@@ -679,6 +679,7 @@ class UserService {
     };
   }
 
+  // services/user-profile.service.js - FIXED uploadProfileAvatar method
   async uploadProfileAvatar(userId, file) {
     try {
       if (!file) {
@@ -693,21 +694,34 @@ class UserService {
         throw new Error("User not found");
       }
 
+      // Create user-specific directory
+      const userUploadsDir = path.join(
+        __dirname,
+        '../uploads/users',
+        userId.toString()
+      );
+
+      if (!fs.existsSync(userUploadsDir)) {
+        fs.mkdirSync(userUploadsDir, { recursive: true });
+      }
+
       // Delete old avatar if exists
       if (user.profileAvatar) {
-        const oldAvatarPath = path.join(
-          __dirname,
-          '../uploads/users',
-          userId.toString(),
-          user.profileAvatar.split('/').pop()
-        );
+        const oldFilename = user.profileAvatar.split('/').pop();
+        const oldAvatarPath = path.join(userUploadsDir, oldFilename);
 
         if (fs.existsSync(oldAvatarPath)) {
           fs.unlinkSync(oldAvatarPath);
         }
       }
 
-      // Store relative path
+      // Move file from temp directory to user directory
+      const tempPath = file.path;
+      const newPath = path.join(userUploadsDir, file.filename);
+
+      fs.renameSync(tempPath, newPath);
+
+      // Store relative path in database
       const avatarPath = `uploads/users/${userId}/${file.filename}`;
 
       await user.update({ profileAvatar: avatarPath });
@@ -719,12 +733,17 @@ class UserService {
       };
     } catch (error) {
       // Clean up uploaded file if there's an error
-      if (file && fs.existsSync(file.path)) {
-        fs.unlinkSync(file.path);
+      if (file && file.path && fs.existsSync(file.path)) {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (deleteError) {
+          console.error("Error deleting temp file:", deleteError);
+        }
       }
       throw error;
     }
   }
+
 
   /**
    * Get user profile avatar
