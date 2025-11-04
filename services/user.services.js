@@ -681,7 +681,12 @@ class UserService {
     };
   }
 
-  // services/user-profile.service.js - FIXED uploadProfileAvatar method
+  
+
+  getBaseUrl() {
+    return process.env.BASE_URL || "https://dev.roboninjaz.com";
+  }
+
   async uploadProfileAvatar(userId, file) {
     try {
       if (!file) {
@@ -728,10 +733,15 @@ class UserService {
 
       await user.update({ profileAvatar: avatarPath });
 
+      // Get full URL
+      const baseUrl = this.getBaseUrl();
+      const publicUrl = `${baseUrl}/${avatarPath}`;
+
       return {
         success: true,
         message: "Avatar uploaded successfully",
         profileAvatar: avatarPath,
+        publicUrl: publicUrl  // ✅ Full URL
       };
     } catch (error) {
       // Clean up uploaded file if there's an error
@@ -746,9 +756,8 @@ class UserService {
     }
   }
 
-
   /**
-   * Get user profile avatar
+   * Get user profile avatar with full URL
    */
   async getProfileAvatar(userId) {
     try {
@@ -765,13 +774,19 @@ class UserService {
         return {
           success: false,
           message: "No avatar found for this user",
-          profileAvatar: null
+          profileAvatar: null,
+          publicUrl: null
         };
       }
+
+      // Get full URL
+      const baseUrl = this.getBaseUrl();
+      const publicUrl = `${baseUrl}/${user.profileAvatar}`;
 
       return {
         success: true,
         profileAvatar: user.profileAvatar,
+        publicUrl: publicUrl  // ✅ Full URL
       };
     } catch (error) {
       throw error;
@@ -796,12 +811,13 @@ class UserService {
       }
 
       // Delete file from storage
-      const avatarPath = path.join(
+      const userUploadsDir = path.join(
         __dirname,
         '../uploads/users',
-        userId.toString(),
-        user.profileAvatar.split('/').pop()
+        userId.toString()
       );
+      const filename = user.profileAvatar.split('/').pop();
+      const avatarPath = path.join(userUploadsDir, filename);
 
       if (fs.existsSync(avatarPath)) {
         fs.unlinkSync(avatarPath);
@@ -818,7 +834,7 @@ class UserService {
       throw error;
     }
   }
-
+  
   // ============== EXTRA DATA METHODS ==============
 
   /**
