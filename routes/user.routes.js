@@ -111,13 +111,7 @@ router.post(
   userController.uploadProfileAvatar
 );
 
-router.patch(
-  "/avatar/update",
-  authenticate,
-  uploadUserAvatar,
-  handleAvatarUploadError,
-  userController.uploadProfileAvatar  // Reuses same logic
-);
+
 /**
  * Get user profile avatar
  * GET /api/user/avatar
