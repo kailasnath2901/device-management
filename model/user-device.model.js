@@ -4,7 +4,7 @@ const sequelize = require("../config/sequelize");
 const User = require("./user.model");
 
 const Device = sequelize.define(
-  "Device",
+  "Devices",
   {
     id: {
       type: DataTypes.INTEGER,
@@ -147,7 +147,7 @@ const Device = sequelize.define(
     },
   },
   {
-    tableName: "device",
+    tableName: "devices",
     timestamps: true,
   }
 );
