@@ -1,23 +1,19 @@
-// middleware/uploadUserAvatar.js - FIXED VERSION
+// middleware/uploadUserAvatar.js - PROPERLY FIXED
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Configure storage
+// Configure storage - use temp directory first
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Create uploads directory for users if it doesn't exist
-    const uploadsDir = path.join(__dirname, '../uploads/users');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    // Use a temporary uploads directory (not user-specific yet)
+    const tempUploadsDir = path.join(__dirname, '../uploads/temp');
+    
+    if (!fs.existsSync(tempUploadsDir)) {
+      fs.mkdirSync(tempUploadsDir, { recursive: true });
     }
-
-    // Create user-specific folder
-    const userDir = path.join(uploadsDir, req.user.id.toString());
-    if (!fs.existsSync(userDir)) {
-      fs.mkdirSync(userDir, { recursive: true });
-    }
-    cb(null, userDir);
+    
+    cb(null, tempUploadsDir);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
