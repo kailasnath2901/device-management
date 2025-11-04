@@ -569,7 +569,13 @@ class DeviceService {
   }
 
 
-    async uploadDeviceAvatar(deviceId, file) {
+   getBaseUrl() {
+    return process.env.BASE_URL || "https://dev.roboninjaz.com";
+  }
+
+
+
+  async uploadDeviceAvatar(deviceId, file) {
     try {
       if (!file) {
         throw new Error("No file provided");
@@ -581,38 +587,61 @@ class DeviceService {
         throw new Error("Device not found");
       }
 
+      // Create device-specific directory
+      const deviceUploadsDir = path.join(
+        __dirname,
+        '../uploads/devices',
+        deviceId.toString()
+      );
+
+      if (!fs.existsSync(deviceUploadsDir)) {
+        fs.mkdirSync(deviceUploadsDir, { recursive: true });
+      }
+
       // Delete old avatar if exists
-      if (device.deviceAvatar) {
-        const oldAvatarPath = path.join(
-          __dirname,
-          '../uploads/devices',
-          deviceId.toString(),
-          device.deviceAvatar.split('/').pop()
-        );
+      if (device.device_avatar) {
+        const oldFilename = device.device_avatar.split('/').pop();
+        const oldAvatarPath = path.join(deviceUploadsDir, oldFilename);
 
         if (fs.existsSync(oldAvatarPath)) {
           fs.unlinkSync(oldAvatarPath);
         }
       }
 
-      // Store relative path
+      // Move file from temp directory to device directory
+      const tempPath = file.path;
+      const newPath = path.join(deviceUploadsDir, file.filename);
+
+      fs.renameSync(tempPath, newPath);
+
+      // Store relative path in database
       const avatarPath = `uploads/devices/${deviceId}/${file.filename}`;
 
-      await device.update({ deviceAvatar: avatarPath });
+      await device.update({ device_avatar: avatarPath });
+
+      // Get full URL
+      const baseUrl = this.getBaseUrl();
+      const publicUrl = `${baseUrl}/${avatarPath}`;
 
       return {
         success: true,
-        message: "Avatar uploaded successfully",
+        message: "Device avatar uploaded successfully",
         deviceAvatar: avatarPath,
+        publicUrl: publicUrl  // ✅ Full URL
       };
     } catch (error) {
       // Clean up uploaded file if there's an error
-      if (file && fs.existsSync(file.path)) {
-        fs.unlinkSync(file.path);
+      if (file && file.path && fs.existsSync(file.path)) {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (deleteError) {
+          console.error("Error deleting temp file:", deleteError);
+        }
       }
       throw error;
     }
   }
+
 
   /**
    * Get device avatar
@@ -620,68 +649,77 @@ class DeviceService {
   async getDeviceAvatar(deviceId) {
     try {
       const device = await Device.findByPk(deviceId, {
-        attributes: ["id", "deviceName", "deviceAvatar"]
+        attributes: ["id", "deviceName", "device_avatar"]
       });
 
       if (!device) {
         throw new Error("Device not found");
       }
 
-      if (!device.deviceAvatar) {
+      if (!device.device_avatar) {
         return {
           success: false,
           message: "No avatar found for this device",
-          deviceAvatar: null
+          deviceAvatar: null,
+          publicUrl: null
         };
       }
 
+      // Get full URL
+      const baseUrl = this.getBaseUrl();
+      const publicUrl = `${baseUrl}/${device.device_avatar}`;
+
       return {
         success: true,
-        deviceAvatar: device.deviceAvatar,
+        deviceAvatar: device.device_avatar,
+        publicUrl: publicUrl  // ✅ Full URL
       };
     } catch (error) {
       throw error;
     }
   }
+
 
   /**
    * Delete device avatar
    */
-  async deleteDeviceAvatar(deviceId) {
-    try {
-      const device = await Device.findByPk(deviceId);
+async deleteDeviceAvatar(deviceId) {
+  try {
+    const device = await Device.findByPk(deviceId);
 
-      if (!device) {
-        throw new Error("Device not found");
-      }
-
-      if (!device.deviceAvatar) {
-        throw new Error("No avatar to delete");
-      }
-
-      // Delete file from storage
-      const avatarPath = path.join(
-        __dirname,
-        '../uploads/devices',
-        deviceId.toString(),
-        device.deviceAvatar.split('/').pop()
-      );
-
-      if (fs.existsSync(avatarPath)) {
-        fs.unlinkSync(avatarPath);
-      }
-
-      // Update device record
-      await device.update({ deviceAvatar: null });
-
-      return {
-        success: true,
-        message: "Avatar deleted successfully",
-      };
-    } catch (error) {
-      throw error;
+    if (!device) {
+      throw new Error("Device not found");
     }
+
+    if (!device.deviceAvatar) {
+      throw new Error("No avatar to delete");
+    }
+
+    // Delete file from storage
+    const deviceUploadsDir = path.join(
+      __dirname,
+      '../uploads/devices',
+      deviceId.toString()
+    );
+    const filename = device.deviceAvatar.split('/').pop();
+    const avatarPath = path.join(deviceUploadsDir, filename);
+
+    if (fs.existsSync(avatarPath)) {
+      fs.unlinkSync(avatarPath);
+    }
+
+    // Update device record
+    await device.update({ deviceAvatar: null });
+
+    return {
+      success: true,
+      message: "Device avatar deleted successfully",
+    };
+  } catch (error) {
+    throw error;
   }
+}
+
 
   // ============== EXTRA DATA METHODS ==============
 
