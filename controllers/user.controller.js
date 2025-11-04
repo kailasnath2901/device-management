@@ -390,8 +390,7 @@ exports.getAcquiredProjects = async (req, res) => {
   }
 }
 
-// controllers/user.controller.js
-const userProfileService = require("../services/user-profile.service");
+
 
 exports.uploadProfileAvatar = async (req, res) => {
   try {
@@ -404,7 +403,7 @@ exports.uploadProfileAvatar = async (req, res) => {
       });
     }
 
-    const result = await userProfileService.uploadProfileAvatar(userId, req.file);
+    const result = await userService.uploadProfileAvatar(userId, req.file);
 
     res.status(200).json({
       success: true,
@@ -423,7 +422,7 @@ exports.uploadProfileAvatar = async (req, res) => {
 exports.getProfileAvatar = async (req, res) => {
   try {
     const userId = req.user.id;
-    const result = await userProfileService.getProfileAvatar(userId);
+    const result = await userService.getProfileAvatar(userId);
 
     res.json({
       success: result.success,
@@ -442,7 +441,7 @@ exports.getProfileAvatar = async (req, res) => {
 exports.deleteProfileAvatar = async (req, res) => {
   try {
     const userId = req.user.id;
-    const result = await userProfileService.deleteProfileAvatar(userId);
+    const result = await userService.deleteProfileAvatar(userId);
 
     res.json({
       success: true,
