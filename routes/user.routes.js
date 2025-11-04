@@ -7,7 +7,7 @@ const {
   performInitialSetup,
 } = require("../services/initial-setup.service");
 
-const { createUserAvatarUpload, handleAvatarUploadError } = require("../middleware/profileUpload");
+const { uploadUserAvatar, handleAvatarUploadError } = require("../middleware/profileUpload");
 // Public routes
 router.post("/signup", userController.signup);
 router.post("/login", userController.login);
@@ -106,11 +106,10 @@ router.get(
 router.post(
   "/avatar/upload",
   authenticate,
-  (req, res, next) => createUserAvatarUpload(req, res, next),
+  uploadUserAvatar,  // ✅ Use directly, not as a function
   handleAvatarUploadError,
   userController.uploadProfileAvatar
 );
-
 /**
  * Get user profile avatar
  * GET /api/user/avatar

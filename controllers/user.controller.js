@@ -395,7 +395,7 @@ exports.getAcquiredProjects = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const result = await userProfileService.uploadProfileAvatar(userId, req.file);
+    const result = await userService.uploadProfileAvatar(userId, req.file);
 
     res.status(200).json({
       success: true,
@@ -418,7 +418,7 @@ exports.getProfileAvatar = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const result = await userProfileService.getProfileAvatar(userId);
+    const result = await userService.getProfileAvatar(userId);
 
     res.json({
       success: result.success,
@@ -441,7 +441,7 @@ exports.deleteProfileAvatar = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const result = await userProfileService.deleteProfileAvatar(userId);
+    const result = await userService.deleteProfileAvatar(userId);
 
     res.json({
       success: true,
@@ -475,7 +475,7 @@ exports.updateExtraData = async (req, res) => {
       });
     }
 
-    const result = await userProfileService.updateExtraData(userId, fieldName, data);
+    const result = await userService.updateExtraData(userId, fieldName, data);
 
     res.json({
       success: true,
@@ -499,7 +499,7 @@ exports.getExtraData = async (req, res) => {
     const userId = req.user.id;
     const { fieldName } = req.params;
 
-    const result = await userProfileService.getExtraData(userId, fieldName);
+    const result = await userService.getExtraData(userId, fieldName);
 
     res.json({
       success: true,
@@ -521,7 +521,7 @@ exports.getAllExtraData = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const result = await userProfileService.getAllExtraData(userId);
+    const result = await userService.getAllExtraData(userId);
 
     res.json({
       success: true,
@@ -546,7 +546,7 @@ exports.deleteExtraData = async (req, res) => {
     const userId = req.user.id;
     const { fieldName } = req.params;
 
-    const result = await userProfileService.deleteExtraData(userId, fieldName);
+    const result = await userService.deleteExtraData(userId, fieldName);
 
     res.json({
       success: true,
@@ -578,7 +578,7 @@ exports.mergeExtraData = async (req, res) => {
       });
     }
 
-    const result = await userProfileService.mergeExtraData(userId, fieldName, data);
+    const result = await userService.mergeExtraData(userId, fieldName, data);
 
     res.json({
       success: true,
