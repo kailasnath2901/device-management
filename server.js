@@ -43,7 +43,8 @@ app.use(
 // app.use(express.static(path.join(__dirname, "public")));
 
 app.use("/uploads/projects", express.static(path.join(__dirname, "public/projects")));
-
+app.use("/uploads/users", express.static(path.join(__dirname, "uploads/users")));  // ✅ ADD THIS
+app.use("/uploads/devices", express.static(path.join(__dirname, "uploads/devices")));  // ✅ AND THIS
 
 // Routes
 app.use("/api/user", require("./routes/user.routes"));
