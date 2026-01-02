@@ -82,7 +82,11 @@ const startServer = async () => {
     console.log("Database connection established successfully.");
 
     console.log("Model associations defined successfully.");
-
+    require('dotenv').config();
+    console.log('Token:', process.env.ZEPTOMAIL_TOKEN);
+    console.log('OTP Template:', process.env.ZEPTOMAIL_OTP_TEMPLATE_KEY);
+    console.log('Welcome Template:', process.env.ZEPTOMAIL_WELCOME_TEMPLATE_KEY);
+   // console.log('Reset Template:', process.env.ZEPTOMAIL_RESET_TEMPLATE_KEY);
     // Sync models with database
     await sequelize.sync({
       alter: false, // Set to true only for development if you want to auto-alter tables

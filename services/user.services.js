@@ -7,7 +7,7 @@ const Project = require("../model/project.model");
 const UserProjectAcquisition = require("../model/user-project-acquisition.model");
 const ProjectFile = require("../model/project-files.model");
 const OTPService = require("./otp.service");
-const EmailService = require("./email.services");
+const ZeptoMailService = require("./zepto_mail_service");
 const Device = require("../model/user-device.model");
 const Ticket = require("../model/ticket.model");
 const OTP = require("../model/otp.model");
@@ -20,7 +20,6 @@ class UserService {
       const { username, email, password, mobile_no } = userData;
 
       // Check for existing users (including inactive ones)
-      // Use 'withDeleted' scope instead of 'withInactive'
       const existingUser = await User.scope("withDeleted").findOne({
         where: {
           [Op.or]: [{ email }, { username }],
@@ -87,7 +86,7 @@ class UserService {
     }
   }
 
-  // Fixed verifyEmail method
+
   async verifyEmail(email, otp) {
     try {
       // Verify OTP
@@ -108,11 +107,11 @@ class UserService {
       // Update user as verified and activate if needed
       await user.update({
         is_email_verified: true,
-        is_active: true, // Reactivate user when email is verified
+        is_active: true,
       });
 
-      // Send welcome email
-      await EmailService.sendWelcomeEmail(email, user.username);
+      // Send welcome email via ZeptoMail
+      await ZeptoMailService.sendWelcomeEmail(email, user.username); // CHANGED from EmailService
 
       return {
         success: true,
@@ -189,7 +188,7 @@ class UserService {
     };
   }
 
-  // New method: OTP-based login (request OTP)
+  // OTP-based login (request OTP)
   async requestLoginOTP(email) {
     const user = await User.findOne({
       where: {
@@ -206,7 +205,7 @@ class UserService {
     return await OTPService.generateAndSendOTP(email, "login");
   }
 
-  // New method: OTP-based login (verify OTP and login)
+  // OTP-based login (verify OTP and login)
   async loginWithOTP(email, otp) {
     try {
       // Verify OTP
@@ -270,12 +269,11 @@ class UserService {
       ],
       limit: parseInt(limit, 10),
       offset: parseInt(offset, 10),
-      order: [["createdAt", "DESC"]], // Order by creation date, newest first
-      distinct: true, // Ensure accurate count
+      order: [["createdAt", "DESC"]],
+      distinct: true,
     };
 
     if (requestingUser.role === "super_admin") {
-      // Super admin can see all users
       const { count, rows } = await User.findAndCountAll(queryOptions);
 
       return {
@@ -289,7 +287,6 @@ class UserService {
     }
 
     if (requestingUser.role === "admin") {
-      // Admin can only see regular users
       queryOptions.where = {
         role: "user",
       };
@@ -309,6 +306,7 @@ class UserService {
     throw new Error("Unauthorized access");
   }
 
+  // Request password reset OTP
   async requestPasswordResetOTP(email) {
     const user = await User.findOne({
       where: {
@@ -322,10 +320,10 @@ class UserService {
       throw new Error("User not found or email not verified");
     }
 
-    return await OTPService.generateAndSendOTP(email, "password_reset");
+    return await OTPService.generateAndSendPasswordResetOTP(email); // Updated method name
   }
 
-  // NEW: Reset Password with OTP
+  // Reset password with OTP (add this method)
   async resetPasswordWithOTP(email, otp, newPassword) {
     try {
       // Verify OTP
@@ -333,11 +331,7 @@ class UserService {
 
       // Find user
       const user = await User.findOne({
-        where: {
-          email,
-          is_active: true,
-          is_email_verified: true,
-        },
+        where: { email, is_active: true },
       });
 
       if (!user) {
@@ -360,41 +354,40 @@ class UserService {
     }
   }
 
-  // NEW: Change Password (requires current password verification)
+  // Change password (add this method)
   async changePassword(userId, currentPassword, newPassword) {
-    const user = await User.findOne({
-      where: {
-        id: userId,
-        is_active: true,
-      },
-    });
+    try {
+      const user = await User.findByPk(userId);
 
-    if (!user) {
-      throw new Error("User not found");
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      // Verify current password
+      const isValidPassword = await bcrypt.compare(
+        currentPassword,
+        user.password
+      );
+
+      if (!isValidPassword) {
+        throw new Error("Current password is incorrect");
+      }
+
+      // Hash new password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+      // Update password
+      await user.update({ password: hashedPassword });
+
+      return {
+        success: true,
+        message: "Password changed successfully",
+      };
+    } catch (error) {
+      throw error;
     }
-
-    // Verify current password
-    const isCurrentPasswordValid = await bcrypt.compare(
-      currentPassword,
-      user.password
-    );
-    if (!isCurrentPasswordValid) {
-      throw new Error("Current password is incorrect");
-    }
-
-    // Hash new password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(newPassword, salt);
-
-    // Update password
-    await user.update({ password: hashedPassword });
-
-    return {
-      success: true,
-      message: "Password changed successfully",
-    };
   }
-
 
   async forceDeleteUser(requestingUser, targetUserId) {
     // Check permissions
@@ -681,7 +674,7 @@ class UserService {
     };
   }
 
-  
+
 
   getBaseUrl() {
     return process.env.BASE_URL || "https://dev.roboninjaz.com";
@@ -834,7 +827,7 @@ class UserService {
       throw error;
     }
   }
-  
+
   // ============== EXTRA DATA METHODS ==============
 
   /**

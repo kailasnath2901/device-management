@@ -1,5 +1,5 @@
 const OTP = require("../model/otp.model");
-const EmailService = require("./email.services");
+const ZeptoMailService = require("./zepto_mail_service"); // CHANGED from EmailService
 const { Op } = require("sequelize");
 
 class OTPService {
@@ -16,7 +16,7 @@ class OTPService {
       });
 
       // Generate new OTP
-      const otp = EmailService.generateOTP();
+      const otp = ZeptoMailService.generateOTP(); // CHANGED from EmailService
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
       // Save OTP to database
@@ -27,8 +27,8 @@ class OTPService {
         expires_at: expiresAt,
       });
 
-      // Send OTP email
-      await EmailService.sendOTP(email, otp, purpose);
+      // Send OTP email via ZeptoMail
+      await ZeptoMailService.sendOTP(email, otp, purpose); // CHANGED from EmailService
 
       return {
         success: true,
@@ -82,32 +82,32 @@ class OTPService {
     }
   }
 
-  // Verify OTP
-  async verifyResetOTP(email, purpose = "password_reset") {
+  // Generate and send password reset OTP
+  async generateAndSendPasswordResetOTP(email) { // RENAMED for clarity
     try {
       // Clean up old OTPs for this email and purpose
       await OTP.destroy({
         where: {
           email,
-          purpose,
+          purpose: "password_reset",
           [Op.or]: [{ expires_at: { [Op.lt]: new Date() } }, { is_used: true }],
         },
       });
 
       // Generate new OTP
-      const otp = EmailService.generateOTP();
+      const otp = ZeptoMailService.generateOTP(); // CHANGED from EmailService
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
       // Save OTP to database
       await OTP.create({
         email,
         otp,
-        purpose,
+        purpose: "password_reset",
         expires_at: expiresAt,
       });
 
-      // Send OTP email
-      await EmailService.sendPasswordResetOTP(email, otp, purpose);
+      // Send OTP email via ZeptoMail
+      await ZeptoMailService.sendPasswordResetOTP(email, otp); // CHANGED from EmailService
 
       return {
         success: true,
