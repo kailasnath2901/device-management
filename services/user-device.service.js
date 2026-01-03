@@ -118,22 +118,43 @@ class DeviceService {
     }
   }
 
-  async removeDeviceClaim(deviceId) {
+ async removeDeviceClaim(deviceId) {
+    // Start a transaction to ensure both actions happen, or neither happens
+    const transaction = await sequelize.transaction();
+
     try {
-      const device = await Device.findByPk(deviceId);
+      const device = await Device.findByPk(deviceId, { transaction });
 
       if (!device) {
         throw new Error("Device not found");
       }
 
-      // Set userId to null to remove the claim
+      // 1. Mark all projects on this device as "removed"
+      // This ensures the next user starts with 0/5 slots used
+      await UserProjectAcquisition.update(
+        { hasRemovalOccurred: true }, // Set the flag that your count logic likely checks
+        {
+          where: {
+            deviceId: deviceId,
+            hasRemovalOccurred: false // Only update active ones
+          },
+          transaction
+        }
+      );
+
+
+
+      // 2. Remove the user claim
       device.userId = null;
       device.lastUpdated = new Date();
 
-      await device.save();
+      await device.save({ transaction });
+
+      await transaction.commit();
 
       return device;
     } catch (error) {
+      await transaction.rollback();
       throw new Error(`Error removing device claim: ${error.message}`);
     }
   }
