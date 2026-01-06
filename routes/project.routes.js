@@ -6,8 +6,9 @@ const { authenticate, authorizeRoles } = require("../middleware/auth");
 const fileUpload = require("../middleware/fileUpload");
 const projectRatingController = require("../controllers/project-rating-controller");
 
-
-// Alternative routing structure with more explicit paths:
+// ============================================
+// SPECIFIC ROUTES FIRST (before :projectId)
+// ============================================
 
 // Category routes with prefix
 router.post("/category/create", authenticate, authorizeRoles("admin", "super_admin"), projectController.createCategory);
@@ -23,87 +24,44 @@ router.get("/component/:id", authenticate, projectController.getComponentById);
 router.put("/component/:id/update", authenticate, authorizeRoles("admin", "super_admin"), projectController.updateComponent);
 router.delete("/component/:id/delete", authenticate, authorizeRoles("admin", "super_admin"), projectController.deleteComponent);
 
-// Project routes with prefix
-router.post("/project/create", authenticate, authorizeRoles("admin", "super_admin"), fileUpload.uploadFields([{ name: "images", maxCount: 10 }, { name: "files", maxCount: 20 }]), projectController.createProject);
-router.put("/project/:projectId/edit", authenticate, fileUpload.uploadFields([{ name: "images", maxCount: 10 }, { name: "files", maxCount: 20 }]), projectController.editProject);
-router.get("/project/:projectId", authenticate, projectController.getProject);
-router.get('/search', authenticate, projectController.searchProjects);
-router.get("/project/user/list", authenticate, projectController.getUserProjects);
-router.delete("/project/:projectId/delete", authenticate, authorizeRoles("admin", "super_admin"), projectController.deleteProject);
-router.get('/projectId/:projectId', authenticate, projectController.getProjectByProjectId);
-
-// File and acquisition routes
+// File operations
 router.get("/file/:fileId/download", authenticate, projectController.downloadProjectFile);
-router.post("/project/:projectId/acquire", authenticate, projectController.acquireProject);
-router.delete("/project/:projectId/remove-acquisition", authenticate, projectController.removeAcquiredProject);
+
+// Running projects (SPECIFIC - before /project/:projectId)
+router.post("/project/set-running", authenticate, projectController.setRunningProject);
+router.get("/project/running", authenticate, projectController.getRunningProject);
+
+// User-related routes
 router.get("/user/acquired-projects", authenticate, projectController.getAcquiredProjects);
 router.get("/user/devices", authenticate, projectController.getUserDevices);
 
-
+// Search routes (SPECIFIC)
+router.get('/search', authenticate, projectController.searchProjects);
 router.get('/categories/search', projectController.searchCategories);
 router.get('/components/search', projectController.searchComponents);
 
-router.post(
-    "/:projectId/rate",
-    authenticate,
-    projectRatingController.addRating
-);
+// ============================================
+// GENERIC ROUTES LAST (with :projectId)
+// ============================================
 
-/**
- * get running projects
- */
+// Project routes with prefix
+router.post("/project/create", authenticate, authorizeRoles("admin", "super_admin"), fileUpload.uploadFields([{ name: "images", maxCount: 10 }, { name: "files", maxCount: 20 }]), projectController.createProject);
+router.put("/project/:projectId/edit", authenticate, fileUpload.uploadFields([{ name: "images", maxCount: 10 }, { name: "files", maxCount: 20 }]), projectController.editProject);
+router.post("/project/:projectId/acquire", authenticate, projectController.acquireProject);
+router.delete("/project/:projectId/remove-acquisition", authenticate, projectController.removeAcquiredProject);
+router.delete("/project/:projectId/delete", authenticate, authorizeRoles("admin", "super_admin"), projectController.deleteProject);
 
-router.post("/project/set-running", authenticate, projectController.setRunningProject);
+// Generic project routes (LAST because they have :projectId)
+router.get("/project/:projectId", authenticate, projectController.getProject);
+router.get('/projectId/:projectId', authenticate, projectController.getProjectByProjectId);
 
-// Get currently running project for a device
-router.get("/project/running", authenticate, projectController.getRunningProject);
-
-
-/**
- * Get user's rating for a specific project
- * GET /api/projects/:projectId/my-rating
- */
-router.get(
-    "/:projectId/my-rating",
-    authenticate,
-    projectRatingController.getUserRating
-);
-
-
-router.get(
-    "/:projectId/ratings",
-    authenticate,
-    projectRatingController.getProjectRatings
-);
-
-
-router.get(
-    "/:projectId/rating-stats",
-    authenticate,
-    projectRatingController.getRatingStats
-);
-
-
-router.delete(
-    "/rating/:ratingId",
-    authenticate,
-    projectRatingController.deleteRating
-);
-
-
-router.get(
-    "/user/my-ratings",
-    authenticate,
-    projectRatingController.getUserRatings
-);
-
-
-router.get(
-    "/top-rated",
-    authenticate,
-    projectRatingController.getTopRatedProjects
-);
-
-
+// Rating routes
+router.post("/:projectId/rate", authenticate, projectRatingController.addRating);
+router.get("/:projectId/my-rating", authenticate, projectRatingController.getUserRating);
+router.get("/:projectId/ratings", authenticate, projectRatingController.getProjectRatings);
+router.get("/:projectId/rating-stats", authenticate, projectRatingController.getRatingStats);
+router.delete("/rating/:ratingId", authenticate, projectRatingController.deleteRating);
+router.get("/user/my-ratings", authenticate, projectRatingController.getUserRatings);
+router.get("/top-rated", authenticate, projectRatingController.getTopRatedProjects);
 
 module.exports = router;

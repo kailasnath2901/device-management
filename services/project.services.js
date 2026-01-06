@@ -1291,7 +1291,7 @@ async setRunningProject(userId, projectId, deviceId) {
           as: "project",
           required: true,
           where: {
-            [sequelize.Op.or]: [
+            [Op.or]: [
               { id: isNaN(projectId) ? null : parseInt(projectId) },
               { projectId: projectId }, // projectId string like "NJ1001"
             ],
