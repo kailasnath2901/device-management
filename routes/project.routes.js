@@ -31,6 +31,9 @@ router.get("/file/:fileId/download", authenticate, projectController.downloadPro
 router.post("/project/set-running", authenticate, projectController.setRunningProject);
 router.get("/project/running", authenticate, projectController.getRunningProject);
 
+// Project user routes (SPECIFIC - before /project/:projectId)
+router.get("/project/user/list", authenticate, projectController.getUserProjects);
+
 // User-related routes
 router.get("/user/acquired-projects", authenticate, projectController.getAcquiredProjects);
 router.get("/user/devices", authenticate, projectController.getUserDevices);
