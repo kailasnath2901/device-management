@@ -983,235 +983,144 @@ class ProjectService {
   }
 }
 
-async getAcquiredProjects(userId, options) {
-  const { page = 1, limit = 10, deviceId, serialNumber } = options;
-  const offset = (page - 1) * limit;
-
-  const whereClause = {
-    userId: userId,
-    hasRemovalOccurred: false,
-  };
-
-  // Determine if we should show limited response
-  // Only show limited response if ONLY serialNumber is passed (not deviceId)
-  const showLimitedResponse = serialNumber && !deviceId;
-
-  let targetDeviceId = null;
-
-  // If filtering by deviceId, verify it belongs to the user
-  if (deviceId) {
-    const device = await Device.findOne({
-      where: { 
-        id: deviceId,
-        userId: userId // CRITICAL: Ensure device belongs to user
-      },
-      attributes: ["id"],
-    });
-
-    if (!device) {
-      // If device doesn't exist or doesn't belong to user, return empty results
-      return {
-        projects: [],
-        totalProjectsAcquired: 0,
-        currentPage: page,
-        totalPages: 0,
-        filteredByDevice: true,
-        deviceId: deviceId,
-        error: "Device not found or does not belong to user"
-      };
-    }
-
-    targetDeviceId = deviceId;
-    whereClause.deviceId = deviceId;
-  }
-
-  // If filtering by serialNumber, verify device belongs to user
-  if (serialNumber) {
-    const device = await Device.findOne({
-      where: { 
-        serialNumber: serialNumber,
-        userId: userId // CRITICAL: Ensure device belongs to user
-      },
-      attributes: ["id"],
-    });
-
-    if (!device) {
-      // If device with serial number doesn't exist or doesn't belong to user
-      return {
-        projects: [],
-        totalProjectsAcquired: 0,
-        currentPage: page,
-        totalPages: 0,
-        filteredByDevice: true,
-        serialNumber: serialNumber,
-        error: "Device not found or does not belong to user"
-      };
-    }
-
-    targetDeviceId = device.id;
-    whereClause.deviceId = device.id;
-  }
-
-  const { count, rows } = await UserProjectAcquisition.findAndCountAll({
-    where: whereClause,
-    // Include all attributes for full response, limit for limited response
-    attributes: showLimitedResponse ? ["id", "createdAt"] : undefined,
-    include: [
-      {
-        model: Project,
-        as: "project",
-        attributes: showLimitedResponse
-          ? ["id", "name", "projectId"]
-          : undefined,
-        include: [
-          {
-            model: ProjectFile,
-            as: "files",
-            attributes: showLimitedResponse ? ["id", "filename"] : undefined,
-            required: false,
-          },
-          {
-            model: ProjectImage,
-            as: "images",
-            attributes: showLimitedResponse ? ["id", "filename"] : undefined,
-            required: false,
-          },
-        ],
-      },
-      {
-        model: Device,
-        as: "device",
-        required: true,
-        // Add additional where clause to ensure device belongs to user
-        where: {
-          userId: userId // CRITICAL: Double-check device ownership
-        },
-        attributes: showLimitedResponse
-          ? ["id", "deviceName", "serialNumber"]
-          : undefined,
-      },
-    ],
-    limit: limit,
-    offset: offset,
-    order: [["createdAt", "DESC"]],
-    distinct: true,
-    col: "id",
-  });
-
-  // Transform the response based on showLimitedResponse flag
-  const projectsWithData = rows.map((acquisition) => {
-    const acquisitionData = acquisition.toJSON();
-
-    // Transform images to URL strings
-    let imageUrls = [];
-    if (acquisitionData.project && acquisitionData.project.images) {
-      imageUrls = acquisitionData.project.images.map(
-        (image) =>
-          `/projects/${acquisitionData.project.id}/images/${image.filename}`
-      );
-    }
-
-    if (showLimitedResponse) {
-      // Limited response - only when serialNumber is passed alone
-      return {
-        id: acquisitionData.id,
-        project: {
-          id: acquisitionData.project.id,
-          name: acquisitionData.project.name,
-          projectId: acquisitionData.project.projectId,
-          files: acquisitionData.project.files || [],
-          images: imageUrls,
-        },
-        device: {
-          id: acquisitionData.device.id,
-          deviceName: acquisitionData.device.deviceName,
-          serialNumber: acquisitionData.device.serialNumber,
-        },
-      };
-    } else {
-      // Full response - return all fields from the models
-      return {
-        ...acquisitionData, // Include all UserProjectAcquisition fields
-        project: {
-          ...acquisitionData.project, // Include all Project fields
-          files: acquisitionData.project.files || [],
-          images: imageUrls, // Replace original images array with URLs
-        },
-        device: {
-          ...acquisitionData.device, // Include all Device fields
-        },
-      };
-    }
-  });
-
-  return {
-    projects: projectsWithData,
-    totalProjectsAcquired: count,
-    currentPage: page,
-    totalPages: Math.ceil(count / limit),
-    filteredByDevice: !!(deviceId || serialNumber),
-    deviceId: targetDeviceId,
-  };
-}
-
-async removeAcquiredProject(userId, projectId, deviceId) {
+async setRunningProject(userId, projectId, deviceId) {
   const transaction = await sequelize.transaction();
 
   try {
-    const acquisition = await UserProjectAcquisition.findOne({
+    // Verify device belongs to user
+    const device = await Device.findOne({
       where: {
+        id: deviceId,
         userId: userId,
-        projectId: projectId,
-        deviceId: deviceId,
-        hasRemovalOccurred: false,
       },
       transaction,
     });
 
-    if (!acquisition) {
-      throw new Error("Project acquisition not found");
+    if (!device) {
+      throw new Error("Device not found or does not belong to user");
     }
 
-    const wasRunning = acquisition.isRunning;
+    // Build dynamic where clause for project
+    const projectWhere = {};
+    if (!isNaN(projectId)) {
+      // It's a number - check both id and projectId
+      const numId = parseInt(projectId);
+      projectWhere[Op.or] = [
+        { id: numId },
+        { projectId: projectId.toString() },
+      ];
+    } else {
+      // It's a string - only check projectId field
+      projectWhere.projectId = projectId;
+    }
 
-    // Mark as removed
-    acquisition.hasRemovalOccurred = true;
-    await acquisition.save({ transaction });
+    let acquisition = await UserProjectAcquisition.findOne({
+      where: {
+        userId: userId,
+        deviceId: deviceId,
+        hasRemovalOccurred: false,
+      },
+      include: [
+        {
+          model: Project,
+          as: "project",
+          required: true,
+          where: projectWhere,
+        },
+      ],
+      transaction,
+    });
 
-    const device = await Device.findByPk(deviceId, { transaction });
-    await device.update({ isModified: true }, { transaction });
+    if (!acquisition) {
+      throw new Error("Project not acquired for this device");
+    }
 
-    // If the removed project was running, activate the next available project
-    if (wasRunning) {
-      const nextProject = await UserProjectAcquisition.findOne({
+    // Set all projects for this device to not running
+    await UserProjectAcquisition.update(
+      { isRunning: false },
+      {
         where: {
           deviceId: deviceId,
           hasRemovalOccurred: false,
         },
-        order: [["createdAt", "ASC"]], // Get oldest (first acquired)
         transaction,
-      });
-
-      if (nextProject) {
-        await nextProject.update({ isRunning: true }, { transaction });
       }
-    }
+    );
+
+    // Set selected project as running
+    await acquisition.update({ isRunning: true }, { transaction });
+
+    await device.update({ isModified: true }, { transaction });
 
     await transaction.commit();
 
-    const remainingProjects = await UserProjectAcquisition.count({
-      where: {
-        deviceId: deviceId,
-        hasRemovalOccurred: false,
-      },
-    });
-
     return {
-      currentFirmwareVersion: device.firmwareVersion,
-      remainingProjects: remainingProjects,
+      success: true,
+      message: "Project set as running",
+      runningProject: {
+        projectId: acquisition.projectId,
+        project: {
+          id: acquisition.project.id,
+          name: acquisition.project.name,
+          projectId: acquisition.project.projectId,
+        },
+        deviceId: acquisition.deviceId,
+      },
     };
   } catch (error) {
     await transaction.rollback();
+    throw error;
+  }
+}
+
+async getRunningProjectForDevice(deviceId, userId) {
+  try {
+    // Verify device belongs to user
+    const device = await Device.findOne({
+      where: {
+        id: deviceId,
+        userId: userId,
+      },
+    });
+
+    if (!device) {
+      throw new Error("Device not found");
+    }
+
+    const runningAcquisition = await UserProjectAcquisition.findOne({
+      where: {
+        deviceId: device.id,
+        isRunning: true,
+        hasRemovalOccurred: false,
+      },
+      include: [
+        {
+          model: Project,
+          as: "project",
+          attributes: ["id", "name", "projectId", "description"],
+        },
+      ],
+    });
+
+    if (!runningAcquisition) {
+      return {
+        success: true,
+        runningProject: null,
+        message: "No project is currently running on this device",
+      };
+    }
+
+    return {
+      success: true,
+      runningProject: {
+        acquisitionId: runningAcquisition.id,
+        projectId: runningAcquisition.projectId,
+        project: runningAcquisition.project,
+        deviceId: device.id,
+        serialNumber: device.serialNumber,
+      },
+    };
+  } catch (error) {
     throw error;
   }
 }

@@ -1178,7 +1178,6 @@ async acquireProject(req, res) {
     });
   }
 }
-
 async setRunningProject(req, res) {
   try {
     const { projectId, deviceId } = req.body;
@@ -1191,10 +1190,10 @@ async setRunningProject(req, res) {
       });
     }
 
-    // projectId can be either the database ID (number) or projectId string (like "NJ1001")
+    // Don't parseInt projectId - let service handle it
     const result = await ProjectService.setRunningProject(
       userId,
-      projectId, // Keep as is - service will handle both formats
+      projectId,
       parseInt(deviceId)
     );
 
@@ -1234,6 +1233,7 @@ async getRunningProject(req, res) {
     });
   }
 }
+
 
 
  async getAcquiredProjects(req, res) {
