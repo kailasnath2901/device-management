@@ -147,7 +147,7 @@ const Device = sequelize.define(
     },
   },
   {
-    tableName: "devices",
+    tableName: "device",
     timestamps: true,
   }
 );
