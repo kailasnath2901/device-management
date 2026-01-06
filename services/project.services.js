@@ -1073,7 +1073,10 @@ async getAcquiredProjects(userId, options) {
   };
 }
 
-  async removeAcquiredProject(userId, projectId, deviceId) {
+async removeAcquiredProject(userId, projectId, deviceId) {
+  const transaction = await sequelize.transaction();
+
+  try {
     const acquisition = await UserProjectAcquisition.findOne({
       where: {
         userId: userId,
@@ -1081,18 +1084,39 @@ async getAcquiredProjects(userId, options) {
         deviceId: deviceId,
         hasRemovalOccurred: false,
       },
+      transaction,
     });
 
     if (!acquisition) {
       throw new Error("Project acquisition not found");
     }
 
-    const device = await Device.findByPk(deviceId);
+    const wasRunning = acquisition.isRunning;
 
+    // Mark as removed
     acquisition.hasRemovalOccurred = true;
-    await acquisition.save();
+    await acquisition.save({ transaction });
 
-    await device.update({ isModified: true });
+    const device = await Device.findByPk(deviceId, { transaction });
+    await device.update({ isModified: true }, { transaction });
+
+    // If the removed project was running, activate the next available project
+    if (wasRunning) {
+      const nextProject = await UserProjectAcquisition.findOne({
+        where: {
+          deviceId: deviceId,
+          hasRemovalOccurred: false,
+        },
+        order: [["createdAt", "ASC"]], // Get oldest (first acquired)
+        transaction,
+      });
+
+      if (nextProject) {
+        await nextProject.update({ isRunning: true }, { transaction });
+      }
+    }
+
+    await transaction.commit();
 
     const remainingProjects = await UserProjectAcquisition.count({
       where: {
@@ -1105,7 +1129,171 @@ async getAcquiredProjects(userId, options) {
       currentFirmwareVersion: device.firmwareVersion,
       remainingProjects: remainingProjects,
     };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
   }
+}
+
+  async initializeRunningProjects() {
+  try {
+    // Get all devices with their acquisitions
+    const devices = await Device.findAll({
+      include: [
+        {
+          model: UserProjectAcquisition,
+          as: "acquisitions",
+          where: {
+            hasRemovalOccurred: false,
+          },
+        },
+      ],
+    });
+
+    for (const device of devices) {
+      if (device.acquisitions && device.acquisitions.length > 0) {
+        // Set the first project as running
+        const firstProject = device.acquisitions[0];
+        
+        // Reset all to false first
+        await UserProjectAcquisition.update(
+          { isRunning: false },
+          {
+            where: {
+              deviceId: device.id,
+              hasRemovalOccurred: false,
+            },
+          }
+        );
+
+        // Set first one as running
+        await firstProject.update({ isRunning: true });
+      }
+    }
+
+    console.log("✓ Initialized running projects for all devices");
+    return { success: true };
+  } catch (error) {
+    console.error("Error initializing running projects:", error);
+    throw error;
+  }
+}
+
+async setRunningProject(userId, projectId, deviceId) {
+  const transaction = await sequelize.transaction();
+
+  try {
+    // Verify device belongs to user
+    const device = await Device.findOne({
+      where: {
+        id: deviceId,
+        userId: userId,
+      },
+      transaction,
+    });
+
+    if (!device) {
+      throw new Error("Device not found or does not belong to user");
+    }
+
+    // Verify acquisition exists
+    const acquisition = await UserProjectAcquisition.findOne({
+      where: {
+        userId: userId,
+        projectId: projectId,
+        deviceId: deviceId,
+        hasRemovalOccurred: false,
+      },
+      transaction,
+    });
+
+    if (!acquisition) {
+      throw new Error("Project not acquired for this device");
+    }
+
+    // Set all projects for this device to not running
+    await UserProjectAcquisition.update(
+      { isRunning: false },
+      {
+        where: {
+          deviceId: deviceId,
+          hasRemovalOccurred: false,
+        },
+        transaction,
+      }
+    );
+
+    // Set selected project as running
+    await acquisition.update({ isRunning: true }, { transaction });
+
+    await device.update({ isModified: true }, { transaction });
+
+    await transaction.commit();
+
+    return {
+      success: true,
+      message: "Project set as running",
+      runningProject: {
+        projectId: acquisition.projectId,
+        deviceId: acquisition.deviceId,
+      },
+    };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
+async getRunningProjectForDevice(deviceId, userId) {
+  try {
+    // Verify device belongs to user
+    const device = await Device.findOne({
+      where: {
+        id: deviceId,
+        userId: userId,
+      },
+    });
+
+    if (!device) {
+      throw new Error("Device not found");
+    }
+
+    const runningAcquisition = await UserProjectAcquisition.findOne({
+      where: {
+        deviceId: deviceId,
+        isRunning: true,
+        hasRemovalOccurred: false,
+      },
+      include: [
+        {
+          model: Project,
+          as: "project",
+          attributes: ["id", "name", "projectId", "description"],
+        },
+      ],
+    });
+
+    if (!runningAcquisition) {
+      return {
+        success: true,
+        runningProject: null,
+        message: "No project is currently running on this device",
+      };
+    }
+
+    return {
+      success: true,
+      runningProject: {
+        acquisitionId: runningAcquisition.id,
+        projectId: runningAcquisition.projectId,
+        project: runningAcquisition.project,
+        deviceId: runningAcquisition.deviceId,
+      },
+    };
+  } catch (error) {
+    throw error;
+  }
+}
 
   async updateUserProjectFirmware(userId, projectId, newFirmwareVersion) {
     const acquisition = await UserProjectAcquisition.findOne({
@@ -1130,81 +1318,87 @@ async getAcquiredProjects(userId, options) {
     return (versionNum + 0.1).toFixed(1);
   }
 
-  async acquireProject(userId, projectId, deviceId) {
-    const transaction = await sequelize.transaction();
+async acquireProject(userId, projectId, deviceId) {
+  const transaction = await sequelize.transaction();
 
-    try {
-      const project = await Project.findByPk(projectId, { transaction });
-      if (!project) {
-        throw new Error("Project not found");
-      }
-
-      const device = await Device.findOne({
-        where: {
-          id: deviceId,
-          userId: userId,
-        },
-        transaction,
-      });
-
-      if (!device) {
-        throw new Error("Device not found or does not belong to this user");
-      }
-
-      const existingAcquisition = await UserProjectAcquisition.findOne({
-        where: {
-          userId: userId,
-          projectId: projectId,
-          deviceId: deviceId,
-          hasRemovalOccurred: false,
-        },
-        transaction,
-      });
-
-      if (existingAcquisition) {
-        throw new Error(
-          "You have already acquired this project for this device"
-        );
-      }
-
-      const deviceProjectCount = await UserProjectAcquisition.count({
-        where: {
-          deviceId: deviceId,
-          hasRemovalOccurred: false,
-        },
-        transaction,
-      });
-
-      if (deviceProjectCount >= 5) {
-        throw new Error(
-          "This device already has the maximum of 5 projects. Please remove a project before adding a new one."
-        );
-      }
-
-      const acquisition = await UserProjectAcquisition.create(
-        {
-          userId: userId,
-          projectId: projectId,
-          deviceId: deviceId,
-          firmwareVersion: device.firmwareVersion,
-          hasRemovalOccurred: false,
-        },
-        { transaction }
-      );
-
-      await transaction.commit();
-
-      await device.update({ isModified: true }, { where: { id: deviceId } });
-
-      return {
-        acquisition,
-        firmwareVersion: device.firmwareVersion,
-      };
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
+  try {
+    const project = await Project.findByPk(projectId, { transaction });
+    if (!project) {
+      throw new Error("Project not found");
     }
+
+    const device = await Device.findOne({
+      where: {
+        id: deviceId,
+        userId: userId,
+      },
+      transaction,
+    });
+
+    if (!device) {
+      throw new Error("Device not found or does not belong to this user");
+    }
+
+    const existingAcquisition = await UserProjectAcquisition.findOne({
+      where: {
+        userId: userId,
+        projectId: projectId,
+        deviceId: deviceId,
+        hasRemovalOccurred: false,
+      },
+      transaction,
+    });
+
+    if (existingAcquisition) {
+      throw new Error(
+        "You have already acquired this project for this device"
+      );
+    }
+
+    const deviceProjectCount = await UserProjectAcquisition.count({
+      where: {
+        deviceId: deviceId,
+        hasRemovalOccurred: false,
+      },
+      transaction,
+    });
+
+    if (deviceProjectCount >= 5) {
+      throw new Error(
+        "This device already has the maximum of 5 projects. Please remove a project before adding a new one."
+      );
+    }
+
+    // If this is the first project, set it as running
+    const isFirstProject = deviceProjectCount === 0;
+
+    const acquisition = await UserProjectAcquisition.create(
+      {
+        userId: userId,
+        projectId: projectId,
+        deviceId: deviceId,
+        firmwareVersion: device.firmwareVersion,
+        hasRemovalOccurred: false,
+        isRunning: isFirstProject, // First project is automatically running
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+
+    await device.update({ isModified: true }, { where: { id: deviceId } });
+
+    return {
+      acquisition,
+      firmwareVersion: device.firmwareVersion,
+      isRunning: isFirstProject,
+    };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
   }
+}
+
 
   async getUserDevices(userId) {
     const devices = await Device.findAll({

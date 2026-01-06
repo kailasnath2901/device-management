@@ -50,6 +50,16 @@ router.post(
 );
 
 /**
+ * get running projects
+ */
+
+router.post("/project/set-running", authenticate, projectController.setRunningProject);
+
+// Get currently running project for a device
+router.get("/project/running", authenticate, projectController.getRunningProject);
+
+
+/**
  * Get user's rating for a specific project
  * GET /api/projects/:projectId/my-rating
  */

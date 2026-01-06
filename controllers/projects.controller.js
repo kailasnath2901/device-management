@@ -1132,53 +1132,110 @@ class ProjectController {
     }
   }
 
-  async acquireProject(req, res) {
-    try {
-      const { projectId } = req.params;
-      const { deviceId } = req.body;
-      const userId = req.user.id;
+async acquireProject(req, res) {
+  try {
+    const { projectId } = req.params;
+    const { deviceId } = req.body;
+    const userId = req.user.id;
 
-      // Validation
-      if (!projectId) {
-        return res.status(400).json({
-          success: false,
-          message: "Project ID is required",
-        });
-      }
-
-      if (!deviceId) {
-        return res.status(400).json({
-          success: false,
-          message: "Device ID is required",
-        });
-      }
-
-      // Call service method
-      const result = await ProjectService.acquireProject(
-        userId,
-        parseInt(projectId),
-        parseInt(deviceId)
-      );
-
-      return res.status(200).json({
-        success: true,
-        message: "Project acquired successfully for the device",
-        acquisition: result.acquisition,
-        firmwareVersion: result.firmwareVersion,
-        projectInfo: {
-          currentProjects: result.projectsCount,
-          maxProjects: result.maxProjects,
-          remainingSlots: result.maxProjects - result.projectsCount,
-        },
-      });
-    } catch (error) {
-      console.error("Acquire Project Error:", error);
-      return res.status(error.status || 500).json({
+    if (!projectId) {
+      return res.status(400).json({
         success: false,
-        message: error.message || "Error acquiring project",
+        message: "Project ID is required",
       });
     }
+
+    if (!deviceId) {
+      return res.status(400).json({
+        success: false,
+        message: "Device ID is required",
+      });
+    }
+
+    const result = await ProjectService.acquireProject(
+      userId,
+      parseInt(projectId),
+      parseInt(deviceId)
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Project acquired successfully for the device",
+      acquisition: result.acquisition,
+      firmwareVersion: result.firmwareVersion,
+      isRunning: result.isRunning,
+      projectInfo: {
+        currentProjects: result.projectsCount,
+        maxProjects: result.maxProjects,
+        remainingSlots: result.maxProjects - result.projectsCount,
+      },
+    });
+  } catch (error) {
+    console.error("Acquire Project Error:", error);
+    return res.status(error.status || 500).json({
+      success: false,
+      message: error.message || "Error acquiring project",
+    });
   }
+}
+
+async setRunningProject(req, res) {
+  try {
+    const { projectId, deviceId } = req.body;
+    const userId = req.user.id;
+
+    if (!projectId || !deviceId) {
+      return res.status(400).json({
+        success: false,
+        message: "Project ID and Device ID are required",
+      });
+    }
+
+    const result = await ProjectService.setRunningProject(
+      userId,
+      parseInt(projectId),
+      parseInt(deviceId)
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Set Running Project Error:", error);
+    return res.status(error.status || 500).json({
+      success: false,
+      message: error.message || "Error setting running project",
+    });
+  }
+}
+
+async getRunningProject(req, res) {
+  try {
+    const { deviceId } = req.query;
+    const userId = req.user.id;
+
+    if (!deviceId) {
+      return res.status(400).json({
+        success: false,
+        message: "Device ID is required",
+      });
+    }
+
+    const result = await ProjectService.getRunningProjectForDevice(
+      parseInt(deviceId),
+      userId
+    );
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Get Running Project Error:", error);
+    return res.status(error.status || 500).json({
+      success: false,
+      message: error.message || "Error fetching running project",
+    });
+  }
+}
 
  async getAcquiredProjects(req, res) {
   try {

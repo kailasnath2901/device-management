@@ -51,31 +51,38 @@ const UserProjectAcquisition = sequelize.define(
         key: "id",
       },
     },
+    // NEW FIELD - Track which project is running
+    isRunning: {
+      type: DataTypes.BOOLEAN,
+      field: "is_running",
+      allowNull: false,
+      defaultValue: false,
+    },
     createdAt: {
       type: DataTypes.DATE,
-      field: 'created_at' // Add this mapping
+      field: "created_at",
     },
     updatedAt: {
       type: DataTypes.DATE,
-      field: 'updated_at' // Add this mapping
-    }
+      field: "updated_at",
+    },
   },
   {
     tableName: "user_project_acquisitions",
     timestamps: true,
-    underscored: false
+    underscored: false,
   }
 );
 
 UserProjectAcquisition.belongsTo(User, {
   foreignKey: "userId",
-  as: "user", // Changed from "project" to "user"
+  as: "user",
 });
 
 UserProjectAcquisition.belongsTo(Project, {
   foreignKey: "projectId",
   as: "project",
-  onDelete: "CASCADE", // Add this
+  onDelete: "CASCADE",
 });
 
 UserProjectAcquisition.belongsTo(Device, {
