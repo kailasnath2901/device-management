@@ -1178,6 +1178,8 @@ async acquireProject(req, res) {
     });
   }
 }
+
+
 async setRunningProject(req, res) {
   try {
     const { projectId, deviceId } = req.body;
@@ -1190,11 +1192,13 @@ async setRunningProject(req, res) {
       });
     }
 
-    // Don't parseInt projectId - let service handle it
+    // Parse deviceId only if it's a number, otherwise keep as string (serial number)
+    const parsedDeviceId = isNaN(deviceId) ? deviceId : parseInt(deviceId);
+
     const result = await ProjectService.setRunningProject(
       userId,
       projectId,
-      parseInt(deviceId)
+      parsedDeviceId
     );
 
     return res.status(200).json(result);
@@ -1219,8 +1223,11 @@ async getRunningProject(req, res) {
       });
     }
 
+    // Parse deviceId only if it's a number, otherwise keep as string (serial number)
+    const parsedDeviceId = isNaN(deviceId) ? deviceId : parseInt(deviceId);
+
     const result = await ProjectService.getRunningProjectForDevice(
-      parseInt(deviceId),
+      parsedDeviceId,
       userId
     );
 
@@ -1233,7 +1240,6 @@ async getRunningProject(req, res) {
     });
   }
 }
-
 
 
  async getAcquiredProjects(req, res) {

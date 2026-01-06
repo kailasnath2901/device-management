@@ -987,12 +987,21 @@ async setRunningProject(userId, projectId, deviceId) {
   const transaction = await sequelize.transaction();
 
   try {
-    // Verify device belongs to user
+    // Build where clause for device - can be ID or serial number
+    const deviceWhere = {
+      userId: userId,
+    };
+
+    if (isNaN(deviceId)) {
+      // It's a serial number string
+      deviceWhere.serialNumber = deviceId;
+    } else {
+      // It's an ID number
+      deviceWhere.id = parseInt(deviceId);
+    }
+
     const device = await Device.findOne({
-      where: {
-        id: deviceId,
-        userId: userId,
-      },
+      where: deviceWhere,
       transaction,
     });
 
@@ -1002,22 +1011,22 @@ async setRunningProject(userId, projectId, deviceId) {
 
     // Build dynamic where clause for project
     const projectWhere = {};
-    if (!isNaN(projectId)) {
+    if (isNaN(projectId)) {
+      // It's a string - only check projectId field
+      projectWhere.projectId = projectId;
+    } else {
       // It's a number - check both id and projectId
       const numId = parseInt(projectId);
       projectWhere[Op.or] = [
         { id: numId },
         { projectId: projectId.toString() },
       ];
-    } else {
-      // It's a string - only check projectId field
-      projectWhere.projectId = projectId;
     }
 
     let acquisition = await UserProjectAcquisition.findOne({
       where: {
         userId: userId,
-        deviceId: deviceId,
+        deviceId: device.id,
         hasRemovalOccurred: false,
       },
       include: [
@@ -1040,7 +1049,7 @@ async setRunningProject(userId, projectId, deviceId) {
       { isRunning: false },
       {
         where: {
-          deviceId: deviceId,
+          deviceId: device.id,
           hasRemovalOccurred: false,
         },
         transaction,
@@ -1064,7 +1073,7 @@ async setRunningProject(userId, projectId, deviceId) {
           name: acquisition.project.name,
           projectId: acquisition.project.projectId,
         },
-        deviceId: acquisition.deviceId,
+        deviceId: device.id,
       },
     };
   } catch (error) {
@@ -1075,12 +1084,21 @@ async setRunningProject(userId, projectId, deviceId) {
 
 async getRunningProjectForDevice(deviceId, userId) {
   try {
-    // Verify device belongs to user
+    // Build where clause for device - can be ID or serial number
+    const deviceWhere = {
+      userId: userId,
+    };
+
+    if (isNaN(deviceId)) {
+      // It's a serial number string
+      deviceWhere.serialNumber = deviceId;
+    } else {
+      // It's an ID number
+      deviceWhere.id = parseInt(deviceId);
+    }
+
     const device = await Device.findOne({
-      where: {
-        id: deviceId,
-        userId: userId,
-      },
+      where: deviceWhere,
     });
 
     if (!device) {
@@ -1124,6 +1142,7 @@ async getRunningProjectForDevice(deviceId, userId) {
     throw error;
   }
 }
+
 
 
 async initializeRunningProjects() {
