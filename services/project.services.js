@@ -1291,7 +1291,7 @@ async setRunningProject(userId, projectId, deviceId) {
           as: "project",
           required: true,
           where: {
-            [Op.or]: [
+            [Sequelize.Op.or]: [
               { id: isNaN(projectId) ? null : parseInt(projectId) },
               { projectId: projectId }, // projectId string like "NJ1001"
             ],
@@ -1343,12 +1343,16 @@ async setRunningProject(userId, projectId, deviceId) {
   }
 }
 
-async getRunningProjectForDevice(deviceId, userId) {
+
+async getRunningProjectForDevice(deviceIdOrSerial, userId) {
   try {
-    // Verify device belongs to user
+    // Find device by ID or serial number
     const device = await Device.findOne({
       where: {
-        id: deviceId,
+        [Op.or]: [
+          { id: isNaN(deviceIdOrSerial) ? null : parseInt(deviceIdOrSerial) },
+          { serialNumber: deviceIdOrSerial },
+        ],
         userId: userId,
       },
     });
@@ -1359,7 +1363,7 @@ async getRunningProjectForDevice(deviceId, userId) {
 
     const runningAcquisition = await UserProjectAcquisition.findOne({
       where: {
-        deviceId: deviceId,
+        deviceId: device.id,
         isRunning: true,
         hasRemovalOccurred: false,
       },
@@ -1386,13 +1390,16 @@ async getRunningProjectForDevice(deviceId, userId) {
         acquisitionId: runningAcquisition.id,
         projectId: runningAcquisition.projectId,
         project: runningAcquisition.project,
-        deviceId: runningAcquisition.deviceId,
+        deviceId: device.id,
+        serialNumber: device.serialNumber,
       },
     };
   } catch (error) {
     throw error;
   }
 }
+
+
 
 
   async updateUserProjectFirmware(userId, projectId, newFirmwareVersion) {
