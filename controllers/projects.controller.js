@@ -1191,16 +1191,14 @@ async setRunningProject(req, res) {
       });
     }
 
+    // projectId can be either the database ID (number) or projectId string (like "NJ1001")
     const result = await ProjectService.setRunningProject(
       userId,
-      parseInt(projectId),
+      projectId, // Keep as is - service will handle both formats
       parseInt(deviceId)
     );
 
-    return res.status(200).json({
-      success: true,
-      data: result,
-    });
+    return res.status(200).json(result);
   } catch (error) {
     console.error("Set Running Project Error:", error);
     return res.status(error.status || 500).json({
@@ -1236,6 +1234,7 @@ async getRunningProject(req, res) {
     });
   }
 }
+
 
  async getAcquiredProjects(req, res) {
   try {

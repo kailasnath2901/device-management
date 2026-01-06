@@ -8,6 +8,7 @@ const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
 const { performInitialSetup } = require("./services/initial-setup.service");
+const ProjectService = require("./services/project.services");
 
 env.config();
 
@@ -84,7 +85,7 @@ const startServer = async () => {
     console.log("Model associations defined successfully.");
     require('dotenv').config();
 
-   // console.log('Reset Template:', process.env.ZEPTOMAIL_RESET_TEMPLATE_KEY);
+    // console.log('Reset Template:', process.env.ZEPTOMAIL_RESET_TEMPLATE_KEY);
     // Sync models with database
     await sequelize.sync({
       alter: false, // Set to true only for development if you want to auto-alter tables
@@ -99,6 +100,13 @@ const startServer = async () => {
       console.log(`Server is running on port ${port}`);
       console.log(`Ticket system is ready!`);
     });
+
+    try {
+      const result = await ProjectService.initializeRunningProjects();
+      console.log("Initialization result:", result);
+    } catch (error) {
+      console.error("Failed to initialize running projects:", error);
+    }
   } catch (error) {
     console.error("Error starting server:", error);
     process.exit(1);
