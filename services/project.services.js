@@ -1364,6 +1364,68 @@ async getAcquiredProjects(userId, options) {
 }
 
 
+async removeAcquiredProject(userId, projectId, deviceId) {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const acquisition = await UserProjectAcquisition.findOne({
+      where: {
+        userId: userId,
+        projectId: projectId,
+        deviceId: deviceId,
+        hasRemovalOccurred: false,
+      },
+      transaction,
+    });
+
+    if (!acquisition) {
+      throw new Error("Project acquisition not found");
+    }
+
+    const wasRunning = acquisition.isRunning;
+
+    // Mark as removed
+    acquisition.hasRemovalOccurred = true;
+    await acquisition.save({ transaction });
+
+    const device = await Device.findByPk(deviceId, { transaction });
+    await device.update({ isModified: true }, { transaction });
+
+    // If the removed project was running, activate the next available project
+    if (wasRunning) {
+      const nextProject = await UserProjectAcquisition.findOne({
+        where: {
+          deviceId: deviceId,
+          hasRemovalOccurred: false,
+        },
+        order: [["createdAt", "ASC"]], // Get oldest (first acquired)
+        transaction,
+      });
+
+      if (nextProject) {
+        await nextProject.update({ isRunning: true }, { transaction });
+      }
+    }
+
+    await transaction.commit();
+
+    const remainingProjects = await UserProjectAcquisition.count({
+      where: {
+        deviceId: deviceId,
+        hasRemovalOccurred: false,
+      },
+    });
+
+    return {
+      currentFirmwareVersion: device.firmwareVersion,
+      remainingProjects: remainingProjects,
+    };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
 
   async updateUserProjectFirmware(userId, projectId, newFirmwareVersion) {
     const acquisition = await UserProjectAcquisition.findOne({
