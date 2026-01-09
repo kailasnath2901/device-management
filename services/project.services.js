@@ -1108,7 +1108,7 @@ async setRunningProject(userId, projectId, deviceId) {
     // Set selected project as running
     await acquisition.update({ isRunning: true }, { transaction });
 
-    await device.update({ isModified: true }, { transaction });
+    // await device.update({ isModified: true }, { transaction });
 
     await transaction.commit();
 
