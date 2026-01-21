@@ -183,14 +183,14 @@ class DeviceService {
         throw new Error("You have already claimed this device");
       }
 
-      // Check if user has reached max devices (5)
-      const userDeviceCount = await Device.count({
-        where: { userId },
-      });
+      // // Check if user has reached max devices (5)
+      // const userDeviceCount = await Device.count({
+      //   where: { userId },
+      // });
 
-      if (userDeviceCount >= 5) {
-        throw new Error("You have reached the maximum limit of 5 devices");
-      }
+      // if (userDeviceCount >= 5) {
+      //   throw new Error("You have reached the maximum limit of 5 devices");
+      // }
 
       // Assign device to user
       device.userId = userId;
