@@ -1201,24 +1201,19 @@ async getAcquiredProjects(userId, options) {
     hasRemovalOccurred: false,
   };
 
-  // Determine if we should show limited response
-  // Only show limited response if ONLY serialNumber is passed (not deviceId)
   const showLimitedResponse = serialNumber && !deviceId;
-
   let targetDeviceId = null;
 
-  // If filtering by deviceId, verify it belongs to the user
   if (deviceId) {
     const device = await Device.findOne({
       where: { 
         id: deviceId,
-        userId: userId // CRITICAL: Ensure device belongs to user
+        userId: userId
       },
       attributes: ["id"],
     });
 
     if (!device) {
-      // If device doesn't exist or doesn't belong to user, return empty results
       return {
         projects: [],
         totalProjectsAcquired: 0,
@@ -1234,18 +1229,16 @@ async getAcquiredProjects(userId, options) {
     whereClause.deviceId = deviceId;
   }
 
-  // If filtering by serialNumber, verify device belongs to user
   if (serialNumber) {
     const device = await Device.findOne({
       where: { 
         serialNumber: serialNumber,
-        userId: userId // CRITICAL: Ensure device belongs to user
+        userId: userId
       },
       attributes: ["id"],
     });
 
     if (!device) {
-      // If device with serial number doesn't exist or doesn't belong to user
       return {
         projects: [],
         totalProjectsAcquired: 0,
@@ -1263,7 +1256,6 @@ async getAcquiredProjects(userId, options) {
 
   const { count, rows } = await UserProjectAcquisition.findAndCountAll({
     where: whereClause,
-    // Include all attributes for full response, limit for limited response
     attributes: showLimitedResponse ? ["id", "createdAt"] : undefined,
     include: [
       {
@@ -1291,9 +1283,8 @@ async getAcquiredProjects(userId, options) {
         model: Device,
         as: "device",
         required: true,
-        // Add additional where clause to ensure device belongs to user
         where: {
-          userId: userId // CRITICAL: Double-check device ownership
+          userId: userId
         },
         attributes: showLimitedResponse
           ? ["id", "deviceName", "serialNumber"]
@@ -1307,11 +1298,12 @@ async getAcquiredProjects(userId, options) {
     col: "id",
   });
 
-  // Transform the response based on showLimitedResponse flag
+  // Force HTTP for download URLs
+  const downloadBaseUrl = this.getDownloadBaseUrl();
+
   const projectsWithData = rows.map((acquisition) => {
     const acquisitionData = acquisition.toJSON();
 
-    // Transform images to URL strings
     let imageUrls = [];
     if (acquisitionData.project && acquisitionData.project.images) {
       imageUrls = acquisitionData.project.images.map(
@@ -1321,14 +1313,16 @@ async getAcquiredProjects(userId, options) {
     }
 
     if (showLimitedResponse) {
-      // Limited response - only when serialNumber is passed alone
       return {
         id: acquisitionData.id,
         project: {
           id: acquisitionData.project.id,
           name: acquisitionData.project.name,
           projectId: acquisitionData.project.projectId,
-          files: acquisitionData.project.files || [],
+          files: (acquisitionData.project.files || []).map(file => ({
+            ...file,
+            downloadUrl: `${downloadBaseUrl}/api/projects/file/${file.id}/download?file=${file.filename}`
+          })),
           images: imageUrls,
         },
         device: {
@@ -1338,16 +1332,18 @@ async getAcquiredProjects(userId, options) {
         },
       };
     } else {
-      // Full response - return all fields from the models
       return {
-        ...acquisitionData, // Include all UserProjectAcquisition fields
+        ...acquisitionData,
         project: {
-          ...acquisitionData.project, // Include all Project fields
-          files: acquisitionData.project.files || [],
-          images: imageUrls, // Replace original images array with URLs
+          ...acquisitionData.project,
+          files: (acquisitionData.project.files || []).map(file => ({
+            ...file,
+            downloadUrl: `${downloadBaseUrl}/api/projects/file/${file.id}/download?file=${file.filename}`
+          })),
+          images: imageUrls,
         },
         device: {
-          ...acquisitionData.device, // Include all Device fields
+          ...acquisitionData.device,
         },
       };
     }
@@ -1362,6 +1358,8 @@ async getAcquiredProjects(userId, options) {
     deviceId: targetDeviceId,
   };
 }
+
+
 
 
 async removeAcquiredProject(userId, projectId, deviceId) {
@@ -1490,6 +1488,13 @@ async removeAcquiredProject(userId, projectId, deviceId) {
 
     return devicesWithCounts;
   }
+
+  getDownloadBaseUrl() {
+  // Force HTTP for download endpoints only
+  const baseUrl = process.env.BASE_URL || "http://localhost:8030";
+  // Remove https:// and replace with http://
+  return baseUrl.replace(/^https:\/\//, "http://");
+}
 }
 
 module.exports = new ProjectService();

@@ -807,87 +807,90 @@ class ProjectController {
     }
   }
 
-  async getProject(req, res) {
-    try {
-      const { projectId } = req.params;
-      const userId = req.user.id;
-      const userRole = req.user.role;
+async getProject(req, res) {
+  try {
+    const { projectId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
 
-      const project = await Project.findByPk(projectId, {
-        include: [
-          {
-            model: ProjectFile,
-            as: "files",
-          },
-          {
-            model: ProjectImage,
-            as: "images",
-          },
-          {
-            model: Category,
-            as: "category",
-          },
-          {
-            model: Component,
-            as: "components",
-            through: { attributes: [] },
-          },
-        ],
-      });
+    const project = await Project.findByPk(projectId, {
+      include: [
+        {
+          model: ProjectFile,
+          as: "files",
+        },
+        {
+          model: ProjectImage,
+          as: "images",
+        },
+        {
+          model: Category,
+          as: "category",
+        },
+        {
+          model: Component,
+          as: "components",
+          through: { attributes: [] },
+        },
+      ],
+    });
 
-      if (!project) {
-        return res.status(404).json({
-          success: false,
-          message: "Project not found",
-        });
-      }
-
-      // Authorization check for viewing
-      if (
-        userRole !== "admin" &&
-        userRole !== "super_admin" &&
-        project.userId !== userId
-      ) {
-        return res.status(403).json({
-          success: false,
-          message: "Unauthorized to view this project",
-        });
-      }
-
-      // Transform project data to add publicUrl to images
-      const projectData = project.toJSON();
-
-      // Get base URL from environment or use default
-      const baseUrl = process.env.BASE_URL || "https://dev.roboninjaz.com";
-
-      // Add publicUrl to each image
-      if (projectData.images && projectData.images.length > 0) {
-        projectData.images = projectData.images.map((image) => ({
-          ...image,
-          publicUrl: `${baseUrl}/projects/${projectId}/images/${image.filename}`,
-        }));
-      }
-
-      // Optionally add publicUrl to files as well
-      if (projectData.files && projectData.files.length > 0) {
-        projectData.files = projectData.files.map((file) => ({
-          ...file,
-          publicUrl: `${baseUrl}/projects/${projectId}/files/${file.filename}`,
-        }));
-      }
-
-      return res.status(200).json({
-        success: true,
-        project: projectData,
-      });
-    } catch (error) {
-      console.error("Error fetching project:", error);
-      return res.status(500).json({
+    if (!project) {
+      return res.status(404).json({
         success: false,
-        message: error.message,
+        message: "Project not found",
       });
     }
+
+    // Authorization check for viewing
+    if (
+      userRole !== "admin" &&
+      userRole !== "super_admin" &&
+      project.userId !== userId
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized to view this project",
+      });
+    }
+
+    // Transform project data
+    const projectData = project.toJSON();
+
+    // Get base URL from environment
+    const baseUrl = process.env.BASE_URL || "http://localhost:8030";
+
+    // Add publicUrl to each image
+    if (projectData.images && projectData.images.length > 0) {
+      projectData.images = projectData.images.map((image) => ({
+        ...image,
+        publicUrl: `${baseUrl}/uploads/projects/${projectId}/images/${image.filename}`,
+      }));
+    }
+
+    // Add download URLs to files (FORCE HTTP)
+    if (projectData.files && projectData.files.length > 0) {
+      const downloadBaseUrl = baseUrl.replace(/^https:\/\//, "http://");
+      projectData.files = projectData.files.map((file) => ({
+        ...file,
+        downloadUrl: `${downloadBaseUrl}/api/projects/file/${file.id}/download?file=${file.filename}`,
+        publicUrl: `${baseUrl}/uploads/projects/${projectId}/files/${file.filename}`,
+      }));
+    }
+
+    return res.status(200).json({
+      success: true,
+      project: projectData,
+    });
+  } catch (error) {
+    console.error("Error fetching project:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
+}
+
 
   async getProjectByProjectId(req, res) {
     try {
@@ -1063,74 +1066,65 @@ class ProjectController {
     }
   }
 
-  async downloadProjectFile(req, res) {
-    try {
-      const { fileId } = req.params;
+async downloadProjectFile(req, res) {
+  try {
+    const { fileId } = req.params;
 
-      // Fetch file with full project details
-      const file = await ProjectFile.findByPk(fileId, {
-        include: [
-          {
-            model: Project,
-            as: "project",
-            attributes: ["id", "userId"],
-          },
-        ],
-      });
+    const file = await ProjectFile.findByPk(fileId, {
+      include: [
+        {
+          model: Project,
+          as: "project",
+          attributes: ["id", "userId"],
+        },
+      ],
+    });
 
-      // Check file existence
-      if (!file) {
-        return res.status(404).json({
-          success: false,
-          message: "File not found",
-        });
-      }
-
-      // Check if user is authenticated
-      if (!req.user) {
-        return res.status(401).json({
-          success: false,
-          message: "Authentication required",
-        });
-      }
-
-      // Check physical file existence
-      if (!fs.existsSync(file.filePath)) {
-        return res.status(404).json({
-          success: false,
-          message: "File does not exist on server",
-        });
-      }
-
-      // Set download headers
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${file.filename}"`
-      );
-      res.setHeader(
-        "Content-Type",
-        file.mimetype || "application/octet-stream"
-      );
-
-      // Stream the file
-      const fileStream = fs.createReadStream(file.filePath);
-      fileStream.pipe(res);
-
-      // Optional: Log download activity
-      // await FileDownloadLog.create({
-      //   userId: req.user.id,
-      //   fileId: file.id,
-      //   downloadedAt: new Date()
-      // });
-    } catch (error) {
-      console.error("Download error:", error);
-      res.status(500).json({
+    if (!file) {
+      return res.status(404).json({
         success: false,
-        message: "Internal server error during file download",
-        errorDetails: error.message,
+        message: "File not found",
       });
     }
+
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    if (!fs.existsSync(file.filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: "File does not exist on server",
+      });
+    }
+
+    // Set download headers
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${file.filename}"`
+    );
+    res.setHeader(
+      "Content-Type",
+      file.mimetype || "application/octet-stream"
+    );
+
+    // Stream the file
+    const fileStream = fs.createReadStream(file.filePath);
+    fileStream.pipe(res);
+
+  } catch (error) {
+    console.error("Download error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error during file download",
+      errorDetails: error.message,
+    });
   }
+}
+
 
 async acquireProject(req, res) {
   try {
