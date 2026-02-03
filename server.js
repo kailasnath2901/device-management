@@ -75,6 +75,7 @@ app.get("/test", (req, res) => {
 });
 
 const port = process.env.PORT || 8015;
+const port2 = process.env.PORT_ALTERNATIVE || 8050;
 
 const startServer = async () => {
   try {
@@ -98,6 +99,11 @@ const startServer = async () => {
     // Start server
     app.listen(port, "0.0.0.0", () => {
       console.log(`Server is running on port ${port}`);
+      console.log(`Ticket system is ready!`);
+    });
+
+    app.listen(8050, "0.0.0.0", () => {
+      console.log(`Server is running on port ${8050}`);
       console.log(`Ticket system is ready!`);
     });
 
