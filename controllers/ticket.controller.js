@@ -65,78 +65,90 @@ const createTicket = async (req, res) => {
       tags,
     } = req.body;
 
-    // Validate required fields
+    // 1. Basic Field Validation
     if (!userId || !ticketType || !title || !description) {
-      // If validation fails, delete uploaded files
-      if (req.files && req.files.length > 0) {
-        deleteFiles(processUploadedFiles(req.files));
-      }
-
+      if (req.files) deleteFiles(processUploadedFiles(req.files));
       return res.status(400).json({
         success: false,
-        message:
-          "Missing required fields: userId, ticketType, title, description",
+        message: "Missing required fields: userId, ticketType, title, description",
       });
     }
 
-    // Validate that at least one of deviceId or projectId is provided for specific issue types
-    if (
-      (ticketType === "Device Issue" && !deviceId) ||
-      (ticketType === "Project Issue" && !projectId)
-    ) {
-      // If validation fails, delete uploaded files
-      if (req.files && req.files.length > 0) {
-        deleteFiles(processUploadedFiles(req.files));
-      }
-
-      return res.status(400).json({
+    // 2. Validate User Existence
+    const user = await User.findByPk(userId);
+    if (!user) {
+      if (req.files) deleteFiles(processUploadedFiles(req.files));
+      return res.status(404).json({
         success: false,
-        message: `${ticketType} requires ${
-          ticketType === "Device Issue" ? "deviceId" : "projectId"
-        }`,
+        message: `Invalid User: User with ID ${userId} does not exist.`,
       });
     }
 
-    // Process uploaded files (images and attachments)
-    const attachments = processUploadedFiles(req.files);
-
-    // Parse tags if it's a string
-    let parsedTags = [];
-    if (tags) {
-      try {
-        parsedTags = typeof tags === "string" ? JSON.parse(tags) : tags;
-      } catch (e) {
-        parsedTags = Array.isArray(tags) ? tags : [tags];
+    // 3. Validate Device Ownership (If deviceId is provided)
+    if (deviceId) {
+      const device = await Device.findOne({
+        where: { id: deviceId, userId: userId } // Ensure device belongs to this user
+      });
+      if (!device) {
+        if (req.files) deleteFiles(processUploadedFiles(req.files));
+        return res.status(403).json({
+          success: false,
+          message: "Access Denied: Device not found or does not belong to this user.",
+        });
       }
+    } else if (ticketType === "Device Issue") {
+      if (req.files) deleteFiles(processUploadedFiles(req.files));
+      return res.status(400).json({ success: false, message: "deviceId is required for Device Issues." });
     }
 
-    // Generate unique ticket ID
-    const ticketId = generateTicketId();
+    // 4. Validate Project Association (If projectId is provided)
+    if (projectId) {
+      // Logic: Check if project exists. 
+      // If you have a UserProject join table, you should verify the link here.
+      const project = await Project.findByPk(projectId);
+      if (!project) {
+        if (req.files) deleteFiles(processUploadedFiles(req.files));
+        return res.status(404).json({
+          success: false,
+          message: `Invalid Project: Project with ID ${projectId} does not exist.`,
+        });
+      }
+      
+      // Optional: If users must be assigned to projects to raise tickets:
+      /*
+      const isAssigned = await user.hasProject(project); 
+      if (!isAssigned) {
+         return res.status(403).json({ message: "User is not associated with this project." });
+      }
+      */
+    } else if (ticketType === "Project Issue") {
+      if (req.files) deleteFiles(processUploadedFiles(req.files));
+      return res.status(400).json({ success: false, message: "projectId is required for Project Issues." });
+    }
 
-    const allowedTypes = [
-      "Device Issue",
-      "Project Issue",
-      "General Query",
-      "Payment Issue",
-      "Feature Request",
-      "Bug Report",
-      "Other",
-    ];
-
+    // 5. Check Allowed Ticket Types
+    const allowedTypes = ["Device Issue", "Project Issue", "General Query", "Payment Issue", "Feature Request", "Bug Report", "Other"];
     if (!allowedTypes.includes(ticketType)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid ticket type: ${ticketType}. Must be one of: ${allowedTypes.join(
-          ", "
-        )}`,
+        message: `Invalid ticket type. Must be one of: ${allowedTypes.join(", ")}`,
       });
     }
 
+    // Process Files & Tags
+    const attachments = processUploadedFiles(req.files);
+    let parsedTags = [];
+    try {
+      parsedTags = typeof tags === "string" ? JSON.parse(tags) : (Array.isArray(tags) ? tags : []);
+    } catch (e) { parsedTags = []; }
+
+    // 6. Create the Ticket
+    const ticketId = generateTicketId();
     const ticket = await Ticket.create({
       ticketId,
       userId,
-      deviceId,
-      projectId,
+      deviceId: deviceId || null,
+      projectId: projectId || null,
       ticketType,
       priority: priority || "Medium",
       title,
@@ -144,32 +156,21 @@ const createTicket = async (req, res) => {
       contactNumber,
       remarks,
       tags: parsedTags,
-      attachments: attachments, // This now contains processed file info
+      attachments: attachments,
     });
 
     // Log the creation
-    await logTicketAction(
-      ticket.id,
-      userId,
-      "Created",
-      null,
-      "Ticket created",
-      req
-    );
+    await logTicketAction(ticket.id, userId, "Created", null, "Ticket created", req);
 
     res.status(201).json({
       success: true,
       message: "Ticket created successfully",
       data: ticket,
     });
+
   } catch (error) {
     console.error("Error creating ticket:", error);
-
-    // If error occurs, delete uploaded files
-    if (req.files && req.files.length > 0) {
-      deleteFiles(processUploadedFiles(req.files));
-    }
-
+    if (req.files) deleteFiles(processUploadedFiles(req.files));
     res.status(500).json({
       success: false,
       message: "Failed to create ticket",
@@ -177,6 +178,7 @@ const createTicket = async (req, res) => {
     });
   }
 };
+
 
 // Get all tickets with filters and pagination
 const getTickets = async (req, res) => {
