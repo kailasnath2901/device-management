@@ -22,6 +22,7 @@ app.use(
     origin: [
       "http://64.227.138.175:8025",
       "http://192.168.10.124:8025",
+      "http://192.168.10.124:8050",
       "http://localhost:3000",
       "http://localhost:8010",
       "https://devui.roboninjaz.com",
