@@ -161,7 +161,6 @@ const User = sequelize.define(
     tableName: "user",
     timestamps: true,
     paranoid: false,
-
     defaultScope: {
       where: {
         is_active: true,

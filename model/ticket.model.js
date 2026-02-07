@@ -177,7 +177,7 @@ const Ticket = sequelize.define(
     tableName: "tickets",
     timestamps: true,
     paranoid: true,
-    underscored: true,
+    // underscored: true,
 
   }
 );
