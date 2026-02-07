@@ -215,7 +215,7 @@ const getTickets = async (req, res) => {
           error: "User does not exist",
         });
       }
-      where.userId = parseInt(userId); // ✅ Ensure it's a number
+      where.userId = parseInt(userId);
     }
     if (assignedTo) where.assignedTo = assignedTo;
     if (deviceId) where.deviceId = deviceId;
@@ -230,27 +230,32 @@ const getTickets = async (req, res) => {
       ];
     }
 
-    // ✅ ADD THIS DEBUG LOG
-    console.log('WHERE CLAUSE:', JSON.stringify(where, null, 2));
-
     const { count, rows } = await Ticket.findAndCountAll({
       where,
       include: [
-        { model: User, as: "user", attributes: ["id", "username", "email"] },
+        { 
+          model: User, 
+          as: "user", 
+          attributes: ["id", "username", "email"],
+          required: false  // ✅ Make it optional (though this one should be required since every ticket has a user)
+        },
         {
           model: User,
           as: "assignedUser",
           attributes: ["id", "username", "email"],
+          required: false  // ✅ Make it optional - tickets may not be assigned yet
         },
         {
           model: Device,
           as: "device",
           attributes: ["id", "deviceName", "deviceType"],
+          required: false  // ✅ Make it optional - not all tickets have devices
         },
         {
           model: Project,
           as: "project",
           attributes: ["id", "name", "description"],
+          required: false  // ✅ Make it optional - not all tickets have projects
         },
         {
           model: Query,
@@ -258,18 +263,13 @@ const getTickets = async (req, res) => {
           attributes: ["id", "title", "queryType", "isResolved"],
           limit: 5,
           order: [["createdAt", "DESC"]],
+          required: false  // ✅ Make it optional
         },
       ],
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [[sortBy, sortOrder.toUpperCase()]],
-      // ✅ ADD THIS TO SEE THE ACTUAL SQL
-      logging: console.log,
     });
-
-    // ✅ ADD THIS DEBUG LOG
-    console.log('FOUND COUNT:', count);
-    console.log('FOUND ROWS:', rows.length);
 
     res.json({
       success: true,
@@ -293,7 +293,6 @@ const getTickets = async (req, res) => {
   }
 };
 
-// Get ticket by ID
 const getTicketById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -304,45 +303,54 @@ const getTicketById = async (req, res) => {
           model: User,
           as: "user",
           attributes: ["id", "username", "email", "mobile_no"],
+          required: false  // ✅ Add this
         },
         {
           model: User,
           as: "assignedUser",
           attributes: ["id", "username", "email"],
+          required: false  // ✅ Add this
         },
         {
           model: User,
           as: "resolver",
           attributes: ["id", "username", "email"],
+          required: false  // ✅ Add this
         },
         {
           model: User,
           as: "escalatedUser",
           attributes: ["id", "username", "email"],
+          required: false  // ✅ Add this
         },
         {
           model: Device,
           as: "device",
           attributes: ["id", "deviceName", "deviceType", "serialNumber"],
+          required: false  // ✅ Add this
         },
         {
           model: Project,
           as: "project",
           attributes: ["id", "name", "description", "projectType"],
+          required: false  // ✅ Add this
         },
         {
           model: Query,
           as: "queries",
+          required: false,  // ✅ Add this
           include: [
             {
               model: User,
               as: "user",
               attributes: ["id", "username", "email"],
+              required: false  // ✅ Add this
             },
             {
               model: User,
               as: "resolver",
               attributes: ["id", "username", "email"],
+              required: false  // ✅ Add this
             },
           ],
           order: [["createdAt", "ASC"]],
@@ -350,11 +358,13 @@ const getTicketById = async (req, res) => {
         {
           model: TicketLog,
           as: "logs",
+          required: false,  // ✅ Add this
           include: [
             {
               model: User,
               as: "user",
               attributes: ["id", "username", "email"],
+              required: false  // ✅ Add this
             },
           ],
           order: [["createdAt", "DESC"]],
