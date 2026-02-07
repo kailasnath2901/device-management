@@ -128,7 +128,7 @@ const Query = sequelize.define(
     tableName: "queries",
     timestamps: true,
     paranoid: true,
-    underscored: true,
+   
   }
 );
 

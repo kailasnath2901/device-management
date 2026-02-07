@@ -108,7 +108,6 @@ const getQueries = async (req, res) => {
     if (priority) where.priority = priority;
     if (isPublic !== undefined) where.isPublic = isPublic === "true";
 
-    // Search functionality - FIXED: Using Op.like instead of Op.iLike for MySQL
     if (search) {
       where[Op.or] = [
         { title: { [Op.like]: `%${search}%` } },
@@ -119,15 +118,36 @@ const getQueries = async (req, res) => {
     const { count, rows } = await Query.findAndCountAll({
       where,
       include: [
-        { model: User, as: "user", attributes: ["id", "username", "email"] },
-        { model: User, as: "resolver", attributes: ["id", "username", "email"] },
-        { model: Ticket, as: "ticket", attributes: ["id", "ticketId", "title", "ticketStatus"] },
-        { model: Query, as: "parentQuery", attributes: ["id", "title"] },
+        { 
+          model: User, 
+          as: "user", 
+          attributes: ["id", "username", "email"],
+          required: false  // ✅ Add this
+        },
+        { 
+          model: User, 
+          as: "resolver", 
+          attributes: ["id", "username", "email"],
+          required: false  // ✅ Add this
+        },
+        { 
+          model: Ticket, 
+          as: "ticket", 
+          attributes: ["id", "ticketId", "title", "ticketStatus"],
+          required: false  // ✅ Add this
+        },
+        { 
+          model: Query, 
+          as: "parentQuery", 
+          attributes: ["id", "title"],
+          required: false  // ✅ Add this
+        },
         {
           model: Query,
           as: "childQueries",
           attributes: ["id", "title", "queryType", "isResolved"],
-          limit: 3,
+          separate: true,  // ✅ Use separate instead of limit
+          required: false  // ✅ Add this
         },
       ],
       limit: parseInt(limit),
@@ -164,22 +184,56 @@ const getQueryById = async (req, res) => {
 
     const query = await Query.findByPk(id, {
       include: [
-        { model: User, as: "user", attributes: ["id", "username", "email", "mobile_no"] },
-        { model: User, as: "resolver", attributes: ["id", "username", "email"] },
-        { model: Ticket, as: "ticket", attributes: ["id", "ticketId", "title", "ticketStatus"] },
-        { model: Query, as: "parentQuery", attributes: ["id", "title", "description"] },
+        { 
+          model: User, 
+          as: "user", 
+          attributes: ["id", "username", "email", "mobile_no"],
+          required: false  // ✅ Add this
+        },
+        { 
+          model: User, 
+          as: "resolver", 
+          attributes: ["id", "username", "email"],
+          required: false  // ✅ Add this
+        },
+        { 
+          model: Ticket, 
+          as: "ticket", 
+          attributes: ["id", "ticketId", "title", "ticketStatus"],
+          required: false  // ✅ Add this
+        },
+        { 
+          model: Query, 
+          as: "parentQuery", 
+          attributes: ["id", "title", "description"],
+          required: false  // ✅ Add this
+        },
         {
           model: Query,
           as: "childQueries",
+          required: false,  // ✅ Add this
           include: [
-            { model: User, as: "user", attributes: ["id", "username", "email"] },
+            { 
+              model: User, 
+              as: "user", 
+              attributes: ["id", "username", "email"],
+              required: false  // ✅ Add this
+            },
           ],
           order: [["createdAt", "ASC"]],
         },
         {
           model: QueryLog,
           as: "logs",
-          include: [{ model: User, as: "user", attributes: ["id", "username", "email"] }],
+          required: false,  // ✅ Add this
+          include: [
+            { 
+              model: User, 
+              as: "user", 
+              attributes: ["id", "username", "email"],
+              required: false  // ✅ Add this
+            }
+          ],
           order: [["createdAt", "DESC"]],
           limit: 20,
         },
@@ -206,7 +260,6 @@ const getQueryById = async (req, res) => {
     });
   }
 };
-
 // Update query
 const updateQuery = async (req, res) => {
   try {
