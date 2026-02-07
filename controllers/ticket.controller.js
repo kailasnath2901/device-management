@@ -180,9 +180,9 @@ const createTicket = async (req, res) => {
 };
 
 
-// Get all tickets with filters and pagination
-// In getTickets controller function
 const getTickets = async (req, res) => {
+  console.log('🔍 USING UPDATED getTickets CONTROLLER'); // ✅ Add this line
+  
   try {
     const {
       page = 1,
@@ -221,7 +221,6 @@ const getTickets = async (req, res) => {
     if (deviceId) where.deviceId = deviceId;
     if (projectId) where.projectId = projectId;
 
-    // Search functionality
     if (search) {
       where[Op.or] = [
         { title: { [Op.iLike]: `%${search}%` } },
@@ -230,46 +229,56 @@ const getTickets = async (req, res) => {
       ];
     }
 
+    console.log('WHERE CLAUSE:', JSON.stringify(where, null, 2));
+
+    // ✅ IMPORTANT: Define includes as a separate variable so we can verify it
+    const includeConfig = [
+      { 
+        model: User, 
+        as: "user", 
+        attributes: ["id", "username", "email"],
+        required: false
+      },
+      {
+        model: User,
+        as: "assignedUser",
+        attributes: ["id", "username", "email"],
+        required: false  // This MUST be false
+      },
+      {
+        model: Device,
+        as: "device",
+        attributes: ["id", "deviceName", "deviceType"],
+        required: false
+      },
+      {
+        model: Project,
+        as: "project",
+        attributes: ["id", "name", "description"],
+        required: false
+      },
+      {
+        model: Query,
+        as: "queries",
+        attributes: ["id", "title", "queryType", "isResolved"],
+        separate: true, // ✅ Use separate instead of limit with order
+        required: false
+      },
+    ];
+
+    console.log('INCLUDE CONFIG:', JSON.stringify(includeConfig, null, 2)); // ✅ Log the config
+
     const { count, rows } = await Ticket.findAndCountAll({
       where,
-      include: [
-        { 
-          model: User, 
-          as: "user", 
-          attributes: ["id", "username", "email"],
-          required: false  // ✅ Make it optional (though this one should be required since every ticket has a user)
-        },
-        {
-          model: User,
-          as: "assignedUser",
-          attributes: ["id", "username", "email"],
-          required: false  // ✅ Make it optional - tickets may not be assigned yet
-        },
-        {
-          model: Device,
-          as: "device",
-          attributes: ["id", "deviceName", "deviceType"],
-          required: false  // ✅ Make it optional - not all tickets have devices
-        },
-        {
-          model: Project,
-          as: "project",
-          attributes: ["id", "name", "description"],
-          required: false  // ✅ Make it optional - not all tickets have projects
-        },
-        {
-          model: Query,
-          as: "queries",
-          attributes: ["id", "title", "queryType", "isResolved"],
-          limit: 5,
-          order: [["createdAt", "DESC"]],
-          required: false  // ✅ Make it optional
-        },
-      ],
+      include: includeConfig,
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [[sortBy, sortOrder.toUpperCase()]],
+      logging: console.log, // This will show the SQL
     });
+
+    console.log('FOUND COUNT:', count);
+    console.log('FOUND ROWS:', rows.length);
 
     res.json({
       success: true,
