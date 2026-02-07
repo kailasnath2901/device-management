@@ -9,7 +9,7 @@ const path = require("path");
 const fs = require("fs");
 const { performInitialSetup } = require("./services/initial-setup.service");
 const ProjectService = require("./services/project.services");
-
+require("./model/associations.model");
 env.config();
 
 app.use(express.json());

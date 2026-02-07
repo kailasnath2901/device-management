@@ -181,6 +181,7 @@ const createTicket = async (req, res) => {
 
 
 // Get all tickets with filters and pagination
+// In getTickets controller function
 const getTickets = async (req, res) => {
   try {
     const {
@@ -214,7 +215,7 @@ const getTickets = async (req, res) => {
           error: "User does not exist",
         });
       }
-      where.userId = userId;
+      where.userId = parseInt(userId); // ✅ Ensure it's a number
     }
     if (assignedTo) where.assignedTo = assignedTo;
     if (deviceId) where.deviceId = deviceId;
@@ -228,6 +229,9 @@ const getTickets = async (req, res) => {
         { ticketId: { [Op.iLike]: `%${search}%` } },
       ];
     }
+
+    // ✅ ADD THIS DEBUG LOG
+    console.log('WHERE CLAUSE:', JSON.stringify(where, null, 2));
 
     const { count, rows } = await Ticket.findAndCountAll({
       where,
@@ -259,7 +263,13 @@ const getTickets = async (req, res) => {
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [[sortBy, sortOrder.toUpperCase()]],
+      // ✅ ADD THIS TO SEE THE ACTUAL SQL
+      logging: console.log,
     });
+
+    // ✅ ADD THIS DEBUG LOG
+    console.log('FOUND COUNT:', count);
+    console.log('FOUND ROWS:', rows.length);
 
     res.json({
       success: true,
