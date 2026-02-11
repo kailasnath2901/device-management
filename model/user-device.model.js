@@ -122,14 +122,18 @@ const Device = sequelize.define(
       type: DataTypes.TEXT("long"),
       allowNull: true,
       get() {
-        const value = this.getDataValue("extradata3");
+        const value = this.getDataValue("extradata3"); // change for each field
         if (!value) return null;
+
+        // If it's already an object, return it
         if (typeof value === "object") return value;
+
         try {
           return JSON.parse(value);
         } catch (e) {
-          console.error("Error parsing extradata3 JSON:", e);
-          return null;
+          // If parsing fails, it's likely raw text/code (like your # comment)
+          // Return the raw string instead of null
+          return value;
         }
       },
       set(value) {
