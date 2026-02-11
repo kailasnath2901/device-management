@@ -158,15 +158,33 @@ const Ticket = sequelize.define(
         key: "id",
       },
     },
-     createdAt: {
+    isRead: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      field: "is_read",
+    },
+    readAt: {
       type: DataTypes.DATE,
-      field: "created_at", // Add this mapping
+      allowNull: true,
+      field: "read_at",
+    },
+    readBy: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "read_by",
+      references: {
+        model: "user",
+        key: "id",
+      },
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      field: "created_at",
     },
     updatedAt: {
       type: DataTypes.DATE,
-      field: "updated_at", // Add this mapping
+      field: "updated_at",
     },
-    // Soft delete support
     deletedAt: {
       type: DataTypes.DATE,
       allowNull: true,
@@ -177,8 +195,6 @@ const Ticket = sequelize.define(
     tableName: "tickets",
     timestamps: true,
     paranoid: true,
-    // underscored: true,
-
   }
 );
 

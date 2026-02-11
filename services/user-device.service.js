@@ -107,10 +107,10 @@ class DeviceService {
         isClaimed: !!device.userId,
         claimedBy: device.user
           ? {
-              id: device.user.id,
-              username: device.user.username,
-              email: device.user.email,
-            }
+            id: device.user.id,
+            username: device.user.username,
+            email: device.user.email,
+          }
           : null,
       };
     } catch (error) {
@@ -118,7 +118,7 @@ class DeviceService {
     }
   }
 
- async removeDeviceClaim(deviceId) {
+  async removeDeviceClaim(deviceId) {
     // Start a transaction to ensure both actions happen, or neither happens
     const transaction = await sequelize.transaction();
 
@@ -273,8 +273,9 @@ class DeviceService {
       const devices = await Device.findAll({
         where: { userId },
         attributes: [
-          'id', 'deviceName', 'deviceType', 'serialNumber', 
-          'firmwareVersion', 'nickName', 'updateAvailable', 
+          'id', 'deviceName', 'deviceType', 'serialNumber',
+          'firmwareVersion', 'nickName', 'updateAvailable',
+          'deviceFile', 'deviceFileName',
           'isModified', 'lastUpdated', 'createdAt'
         ]
       });
@@ -452,7 +453,7 @@ class DeviceService {
   async markDevicesUpdateAvailable(deviceType, serialNumbers = null) {
     try {
       let whereClause = {};
-      
+
       if (serialNumbers && serialNumbers.length > 0) {
         whereClause.serialNumber = { [Op.in]: serialNumbers };
         if (deviceType) {
@@ -478,7 +479,7 @@ class DeviceService {
   async clearDevicesUpdateAvailable(deviceType, serialNumbers = null) {
     try {
       let whereClause = {};
-      
+
       if (serialNumbers && serialNumbers.length > 0) {
         whereClause.serialNumber = { [Op.in]: serialNumbers };
         if (deviceType) {
@@ -504,11 +505,11 @@ class DeviceService {
   async getDevicesWithUpdateAvailable(deviceType = null, userId = null) {
     try {
       let whereClause = { updateAvailable: true };
-      
+
       if (deviceType) {
         whereClause.deviceType = deviceType;
       }
-      
+
       if (userId) {
         whereClause.userId = userId;
       }
@@ -524,7 +525,7 @@ class DeviceService {
           },
         ],
         attributes: [
-          'id', 'serialNumber', 'deviceType', 'deviceName', 
+          'id', 'serialNumber', 'deviceType', 'deviceName',
           'nickName', 'firmwareVersion', 'updateAvailable', 'userId'
         ],
         order: [['deviceType', 'ASC'], ['deviceName', 'ASC']]
@@ -590,7 +591,7 @@ class DeviceService {
   }
 
 
-   getBaseUrl() {
+  getBaseUrl() {
     return process.env.BASE_URL || "https://dev.roboninjaz.com";
   }
 
@@ -704,44 +705,245 @@ class DeviceService {
   /**
    * Delete device avatar
    */
-async deleteDeviceAvatar(deviceId) {
-  try {
-    const device = await Device.findByPk(deviceId);
+  async deleteDeviceAvatar(deviceId) {
+    try {
+      const device = await Device.findByPk(deviceId);
 
-    if (!device) {
-      throw new Error("Device not found");
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      if (!device.deviceAvatar) {
+        throw new Error("No avatar to delete");
+      }
+
+      // Delete file from storage
+      const deviceUploadsDir = path.join(
+        __dirname,
+        '../uploads/devices',
+        deviceId.toString()
+      );
+      const filename = device.deviceAvatar.split('/').pop();
+      const avatarPath = path.join(deviceUploadsDir, filename);
+
+      if (fs.existsSync(avatarPath)) {
+        fs.unlinkSync(avatarPath);
+      }
+
+      // Update device record
+      await device.update({ deviceAvatar: null });
+
+      return {
+        success: true,
+        message: "Device avatar deleted successfully",
+      };
+    } catch (error) {
+      throw error;
     }
-
-    if (!device.deviceAvatar) {
-      throw new Error("No avatar to delete");
-    }
-
-    // Delete file from storage
-    const deviceUploadsDir = path.join(
-      __dirname,
-      '../uploads/devices',
-      deviceId.toString()
-    );
-    const filename = device.deviceAvatar.split('/').pop();
-    const avatarPath = path.join(deviceUploadsDir, filename);
-
-    if (fs.existsSync(avatarPath)) {
-      fs.unlinkSync(avatarPath);
-    }
-
-    // Update device record
-    await device.update({ deviceAvatar: null });
-
-    return {
-      success: true,
-      message: "Device avatar deleted successfully",
-    };
-  } catch (error) {
-    throw error;
   }
-}
 
+  //============ Upload File to a device============
 
+  // Add to DeviceService class in user-device.service.js
+
+  /**
+   * Upload device file (.py, .txt, etc.)
+   */
+  async uploadDeviceFile(deviceId, file) {
+    try {
+      if (!file) {
+        throw new Error("No file provided");
+      }
+
+      const device = await Device.findByPk(deviceId);
+
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      // Validate file type
+      const allowedExtensions = ['.py', '.txt', '.json', '.xml', '.yaml', '.yml', '.conf', '.config'];
+      const fileExt = path.extname(file.originalname).toLowerCase();
+
+      if (!allowedExtensions.includes(fileExt)) {
+        throw new Error(`Invalid file type. Allowed: ${allowedExtensions.join(', ')}`);
+      }
+
+      // Create device-specific files directory
+      const deviceFilesDir = path.join(
+        __dirname,
+        '../uploads/devices',
+        deviceId.toString(),
+        'files'
+      );
+
+      if (!fs.existsSync(deviceFilesDir)) {
+        fs.mkdirSync(deviceFilesDir, { recursive: true });
+      }
+
+      // Delete old file if exists
+      if (device.deviceFile) {
+        const oldFilePath = path.join(__dirname, '..', device.deviceFile);
+        if (fs.existsSync(oldFilePath)) {
+          fs.unlinkSync(oldFilePath);
+          console.log(`Deleted old device file: ${oldFilePath}`);
+        }
+      }
+
+      // Move file from temp directory to device files directory
+      const tempPath = file.path;
+      const newFilename = `device_file_${Date.now()}${fileExt}`;
+      const newPath = path.join(deviceFilesDir, newFilename);
+
+      fs.renameSync(tempPath, newPath);
+
+      // Store relative path in database
+      const filePath = `uploads/devices/${deviceId}/files/${newFilename}`;
+
+      // Update device with new file and set isModified to true
+      await device.update({
+        deviceFile: filePath,
+        deviceFileName: file.originalname,
+        isModified: true,  // ✅ Set isModified to true
+        lastUpdated: new Date()
+      });
+
+      // Get full URL
+      const baseUrl = this.getBaseUrl();
+      const publicUrl = `${baseUrl}/${filePath}`;
+
+      return {
+        success: true,
+        message: "Device file uploaded successfully",
+        deviceFile: filePath,
+        deviceFileName: file.originalname,
+        isModified: true,
+        publicUrl: publicUrl
+      };
+    } catch (error) {
+      // Clean up uploaded file if there's an error
+      if (file && file.path && fs.existsSync(file.path)) {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (deleteError) {
+          console.error("Error deleting temp file:", deleteError);
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get device file
+   */
+  async getDeviceFile(deviceId) {
+    try {
+      const device = await Device.findByPk(deviceId, {
+        attributes: ["id", "deviceName", "deviceFile", "deviceFileName", "isModified"]
+      });
+
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      if (!device.deviceFile) {
+        return {
+          success: false,
+          message: "No file found for this device",
+          deviceFile: null,
+          deviceFileName: null,
+          isModified: device.isModified,
+          publicUrl: null
+        };
+      }
+
+      // Get full URL
+      const baseUrl = this.getBaseUrl();
+      const publicUrl = `${baseUrl}/${device.deviceFile}`;
+
+      return {
+        success: true,
+        deviceFile: device.deviceFile,
+        deviceFileName: device.deviceFileName,
+        isModified: device.isModified,
+        publicUrl: publicUrl
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Delete device file
+   */
+  async deleteDeviceFile(deviceId) {
+    try {
+      const device = await Device.findByPk(deviceId);
+
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      if (!device.deviceFile) {
+        throw new Error("No file to delete");
+      }
+
+      // Delete file from storage
+      const filePath = path.join(__dirname, '..', device.deviceFile);
+
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log(`Deleted device file: ${filePath}`);
+      }
+
+      // Update device record
+      await device.update({
+        deviceFile: null,
+        deviceFileName: null,
+        lastUpdated: new Date()
+      });
+
+      return {
+        success: true,
+        message: "Device file deleted successfully",
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Download device file
+   */
+  async downloadDeviceFile(deviceId) {
+    try {
+      const device = await Device.findByPk(deviceId, {
+        attributes: ["id", "deviceFile", "deviceFileName"]
+      });
+
+      if (!device) {
+        throw new Error("Device not found");
+      }
+
+      if (!device.deviceFile) {
+        throw new Error("No file available for download");
+      }
+
+      const filePath = path.join(__dirname, '..', device.deviceFile);
+
+      if (!fs.existsSync(filePath)) {
+        throw new Error("File not found in storage");
+      }
+
+      return {
+        success: true,
+        filePath: filePath,
+        fileName: device.deviceFileName || 'device_file.txt'
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
   // ============== EXTRA DATA METHODS ==============
 
   /**

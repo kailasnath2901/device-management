@@ -260,6 +260,63 @@ const getQueryById = async (req, res) => {
     });
   }
 };
+
+// Mark query as read
+const markQueryAsRead = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { readBy } = req.body;
+
+    const query = await Query.findByPk(id);
+    
+    if (!query) {
+      return res.status(404).json({
+        success: false,
+        message: "Query not found",
+      });
+    }
+
+    // Only update if not already read
+    if (!query.isRead) {
+      await query.update({
+        isRead: true,
+        readAt: new Date(),
+        readBy: readBy || null,
+      });
+
+      // Log the action
+      await logQueryAction(
+        query.id,
+        query.ticketId,
+        readBy,
+        "Read",
+        false,
+        true,
+        req,
+        "Query marked as read"
+      );
+    }
+
+    res.json({
+      success: true,
+      message: "Query marked as read",
+      data: {
+        isRead: query.isRead,
+        readAt: query.readAt,
+        readBy: query.readBy,
+      },
+    });
+  } catch (error) {
+    console.error("Error marking query as read:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to mark query as read",
+      error: error.message,
+    });
+  }
+};
+
+
 // Update query
 const updateQuery = async (req, res) => {
   try {
@@ -465,4 +522,5 @@ module.exports = {
   deleteQuery,
   resolveQuery,
   getQueryHistory,
+  markQueryAsRead
 };

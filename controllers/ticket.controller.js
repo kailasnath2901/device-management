@@ -306,60 +306,67 @@ const getTicketById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const ticket = await Ticket.findByPk(id, {
+    // Determine if the id is a numeric ID or a ticketId (string format like TKT-XXX-XXX)
+    const isNumericId = !isNaN(id) && Number.isInteger(Number(id));
+    
+    // Build the query based on whether it's a numeric ID or ticketId
+    const whereClause = isNumericId ? { id: parseInt(id) } : { ticketId: id };
+
+    const ticket = await Ticket.findOne({
+      where: whereClause,
       include: [
         {
           model: User,
           as: "user",
           attributes: ["id", "username", "email", "mobile_no"],
-          required: false  // ✅ Add this
+          required: false
         },
         {
           model: User,
           as: "assignedUser",
           attributes: ["id", "username", "email"],
-          required: false  // ✅ Add this
+          required: false
         },
         {
           model: User,
           as: "resolver",
           attributes: ["id", "username", "email"],
-          required: false  // ✅ Add this
+          required: false
         },
         {
           model: User,
           as: "escalatedUser",
           attributes: ["id", "username", "email"],
-          required: false  // ✅ Add this
+          required: false
         },
         {
           model: Device,
           as: "device",
           attributes: ["id", "deviceName", "deviceType", "serialNumber"],
-          required: false  // ✅ Add this
+          required: false
         },
         {
           model: Project,
           as: "project",
           attributes: ["id", "name", "description", "projectType"],
-          required: false  // ✅ Add this
+          required: false
         },
         {
           model: Query,
           as: "queries",
-          required: false,  // ✅ Add this
+          required: false,
           include: [
             {
               model: User,
               as: "user",
               attributes: ["id", "username", "email"],
-              required: false  // ✅ Add this
+              required: false
             },
             {
               model: User,
               as: "resolver",
               attributes: ["id", "username", "email"],
-              required: false  // ✅ Add this
+              required: false
             },
           ],
           order: [["createdAt", "ASC"]],
@@ -367,13 +374,13 @@ const getTicketById = async (req, res) => {
         {
           model: TicketLog,
           as: "logs",
-          required: false,  // ✅ Add this
+          required: false,
           include: [
             {
               model: User,
               as: "user",
               attributes: ["id", "username", "email"],
-              required: false  // ✅ Add this
+              required: false
             },
           ],
           order: [["createdAt", "DESC"]],
@@ -402,6 +409,65 @@ const getTicketById = async (req, res) => {
     });
   }
 };
+
+// Mark ticket as read
+const markTicketAsRead = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { readBy } = req.body;
+
+    // Determine if the id is a numeric ID or a ticketId
+    const isNumericId = !isNaN(id) && Number.isInteger(Number(id));
+    const whereClause = isNumericId ? { id: parseInt(id) } : { ticketId: id };
+
+    const ticket = await Ticket.findOne({ where: whereClause });
+    
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Ticket not found",
+      });
+    }
+
+    // Only update if not already read
+    if (!ticket.isRead) {
+      await ticket.update({
+        isRead: true,
+        readAt: new Date(),
+        readBy: readBy || null,
+      });
+
+      // Log the action
+      await logTicketAction(
+        ticket.id,
+        readBy,
+        "Read",
+        false,
+        true,
+        req,
+        "Ticket marked as read"
+      );
+    }
+
+    res.json({
+      success: true,
+      message: "Ticket marked as read",
+      data: {
+        isRead: ticket.isRead,
+        readAt: ticket.readAt,
+        readBy: ticket.readBy,
+      },
+    });
+  } catch (error) {
+    console.error("Error marking ticket as read:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to mark ticket as read",
+      error: error.message,
+    });
+  }
+};
+
 
 // Update ticket
 const updateTicket = async (req, res) => {
@@ -823,6 +889,7 @@ module.exports = {
   createTicket,
   getTickets,
   getTicketById,
+  markTicketAsRead,
   updateTicket,
   deleteTicket,
   assignTicket,

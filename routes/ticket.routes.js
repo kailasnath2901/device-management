@@ -14,6 +14,7 @@ const {
   escalateTicket,
   getTicketStats,
   getTicketHistory,
+  markTicketAsRead
 } = require("../controllers/ticket.controller");
 
 // Import upload middleware
@@ -32,13 +33,13 @@ router.get("/stats", getTicketStats);
 router.get("/attachments/:filename", (req, res) => {
   const filename = req.params.filename;
   const filepath = path.join(__dirname, '../uploads/ticketImages', filename);
-  
+
   // Check if file exists
   if (fs.existsSync(filepath)) {
     // Set appropriate headers for images
     const ext = path.extname(filename).toLowerCase();
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
-    
+
     if (imageExtensions.includes(ext)) {
       // Set content type for images
       const contentType = {
@@ -50,15 +51,15 @@ router.get("/attachments/:filename", (req, res) => {
         '.bmp': 'image/bmp',
         '.svg': 'image/svg+xml'
       };
-      
+
       res.setHeader('Content-Type', contentType[ext] || 'image/jpeg');
     }
-    
+
     res.sendFile(path.resolve(filepath));
   } else {
-    res.status(404).json({ 
-      success: false, 
-      message: "File not found" 
+    res.status(404).json({
+      success: false,
+      message: "File not found"
     });
   }
 });
@@ -67,23 +68,23 @@ router.get("/attachments/:filename", (req, res) => {
 router.get("/download/:filename", (req, res) => {
   const filename = req.params.filename;
   const filepath = path.join(__dirname, '../uploads/ticketImages', filename);
-  
+
   // Check if file exists
   if (fs.existsSync(filepath)) {
     // You can store original filename in database and use it here
     res.download(filepath, filename, (err) => {
       if (err) {
         console.error("Error downloading file:", err);
-        res.status(500).json({ 
-          success: false, 
-          message: "Error downloading file" 
+        res.status(500).json({
+          success: false,
+          message: "Error downloading file"
         });
       }
     });
   } else {
-    res.status(404).json({ 
-      success: false, 
-      message: "File not found" 
+    res.status(404).json({
+      success: false,
+      message: "File not found"
     });
   }
 });
@@ -100,6 +101,9 @@ router.delete("/:id", deleteTicket);
 // Assign ticket to user
 router.patch("/:id/assign", assignTicket);
 
+
+router.patch("/:id/read", markTicketAsRead);
+
 // Resolve ticket
 router.patch("/:id/resolve", resolveTicket);
 
@@ -114,18 +118,18 @@ router.get("/:id/attachments", async (req, res) => {
   try {
     const { id } = req.params;
     const Ticket = require("../model/ticket.model");
-    
+
     const ticket = await Ticket.findByPk(id, {
       attributes: ['id', 'attachments']
     });
-    
+
     if (!ticket) {
       return res.status(404).json({
         success: false,
         message: "Ticket not found"
       });
     }
-    
+
     res.json({
       success: true,
       data: {

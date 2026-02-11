@@ -10,6 +10,7 @@ const {
   deleteQuery,
   resolveQuery,
   getQueryHistory,
+  markQueryAsRead
 } = require("../controllers/query.controller");
 
 // Create a new query
@@ -26,6 +27,8 @@ router.put("/:id", updateQuery);
 
 // Delete query
 router.delete("/:id", deleteQuery);
+
+router.patch("/:id/read", markQueryAsRead);
 
 // Resolve query
 router.patch("/:id/resolve", resolveQuery);

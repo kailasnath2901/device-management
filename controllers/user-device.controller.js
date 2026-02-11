@@ -507,6 +507,111 @@ async updateDeviceUpdateFlag(req, res) {
   }
 }
 
+
+
+// Add or upload device file to device
+
+async uploadDeviceFile(req, res) {
+  try {
+    const { deviceId } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file provided"
+      });
+    }
+
+    // Only admins or device owners can upload files
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      const device = await DeviceService.getDeviceById(deviceId);
+      if (!device || device.userId !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only upload files to devices you own"
+        });
+      }
+    }
+
+    const result = await DeviceService.uploadDeviceFile(deviceId, req.file);
+
+    res.json(result);
+  } catch (error) {
+    console.error("Upload device file error:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+}
+
+async getDeviceFile(req, res) {
+  try {
+    const { deviceId } = req.params;
+
+    const result = await DeviceService.getDeviceFile(deviceId);
+
+    res.json(result);
+  } catch (error) {
+    console.error("Get device file error:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+}
+
+async deleteDeviceFile(req, res) {
+  try {
+    const { deviceId } = req.params;
+
+    // Only admins or device owners can delete files
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      const device = await DeviceService.getDeviceById(deviceId);
+      if (!device || device.userId !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only delete files from devices you own"
+        });
+      }
+    }
+
+    const result = await DeviceService.deleteDeviceFile(deviceId);
+
+    res.json(result);
+  } catch (error) {
+    console.error("Delete device file error:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+}
+
+async downloadDeviceFile(req, res) {
+  try {
+    const { deviceId } = req.params;
+
+    const result = await DeviceService.downloadDeviceFile(deviceId);
+
+    res.download(result.filePath, result.fileName, (err) => {
+      if (err) {
+        console.error("Error downloading file:", err);
+        res.status(500).json({
+          success: false,
+          message: "Error downloading file"
+        });
+      }
+    });
+  } catch (error) {
+    console.error("Download device file error:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+}
+
 // Get device statistics
 async getDeviceStats(req, res) {
   try {

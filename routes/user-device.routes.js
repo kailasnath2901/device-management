@@ -4,6 +4,7 @@ const deviceController = require('../controllers/user-device.controller');
 const { authenticate, authorizeRoles } = require('../middleware/auth');
 const { uploadDeviceAvatar, handleDeviceAvatarUploadError } = require('../middleware/deviceAvatarUpload');
 const deviceProfileController = require('../controllers/user-device-profile.controller');
+const { uploadDeviceFile, handleDeviceFileUploadError } = require('../middleware/device_fileUpload');
 
 router.post('/admin/create-device',
   authenticate,
@@ -33,6 +34,35 @@ router.delete('/admin/devices/:deviceId',
   authorizeRoles('admin', 'super_admin'),
   deviceController.deleteDeviceByAdmin
 );
+
+// upload or add device files to device
+
+router.post(
+  "/:deviceId/upload-file",
+  authorizeRoles('admin', 'super_admin'),
+  uploadDeviceFile,
+  handleDeviceFileUploadError,
+  deviceController.uploadDeviceFile
+);
+
+router.get(
+  "/:deviceId/file",
+  authorizeRoles('admin', 'super_admin'),
+  deviceController.getDeviceFile
+);
+
+router.delete(
+  "/:deviceId/file",
+  authorizeRoles('admin', 'super_admin'),
+  deviceController.deleteDeviceFile
+);
+
+router.get(
+  "/:deviceId/download-file",
+  authorizeRoles('admin', 'super_admin'),
+  deviceController.downloadDeviceFile
+);
+
 
 // Update device nickname (users can update their own device nicknames)
 router.patch('/nickname/:serialNumber',
