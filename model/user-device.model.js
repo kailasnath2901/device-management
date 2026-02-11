@@ -1,4 +1,4 @@
-// models/device.model.js
+// models/user-device.model.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/sequelize");
 const User = require("./user.model");
@@ -54,24 +54,29 @@ const Device = sequelize.define(
       onDelete: "SET NULL",
       onUpdate: "CASCADE",
     },
-    // New avatar field
     deviceAvatar: {
       type: DataTypes.STRING,
       allowNull: true,
       comment: "Stored as uploads/devices/:deviceId/filename"
     },
-    // Extra data fields for device metadata
+    // NEW: Device file field for .py, .txt files
+    deviceFile: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: "Stored as uploads/devices/:deviceId/files/filename"
+    },
+    deviceFileName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: "Original filename for the uploaded device file"
+    },
     extradata1: {
       type: DataTypes.TEXT("long"),
       allowNull: true,
       get() {
         const value = this.getDataValue("extradata1");
         if (!value) return null;
-
-        if (typeof value === "object") {
-          return value;
-        }
-
+        if (typeof value === "object") return value;
         try {
           return JSON.parse(value);
         } catch (e) {
@@ -95,11 +100,7 @@ const Device = sequelize.define(
       get() {
         const value = this.getDataValue("extradata2");
         if (!value) return null;
-
-        if (typeof value === "object") {
-          return value;
-        }
-
+        if (typeof value === "object") return value;
         try {
           return JSON.parse(value);
         } catch (e) {
@@ -123,11 +124,7 @@ const Device = sequelize.define(
       get() {
         const value = this.getDataValue("extradata3");
         if (!value) return null;
-
-        if (typeof value === "object") {
-          return value;
-        }
-
+        if (typeof value === "object") return value;
         try {
           return JSON.parse(value);
         } catch (e) {
