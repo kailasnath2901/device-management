@@ -7,6 +7,7 @@ const User = require("../model/user.model");
 const Device = require("../model/user-device.model");
 const Project = require("../model/project.model");
 const { logTicketAction } = require("../utils/utils.logging");
+const zeptoMailService = require("../services/zepto_mail_service");
 const path = require("path");
 const fs = require("fs");
 
@@ -87,7 +88,7 @@ const createTicket = async (req, res) => {
     // 3. Validate Device Ownership (If deviceId is provided)
     if (deviceId) {
       const device = await Device.findOne({
-        where: { id: deviceId, userId: userId } // Ensure device belongs to this user
+        where: { id: deviceId, userId: userId }
       });
       if (!device) {
         if (req.files) deleteFiles(processUploadedFiles(req.files));
@@ -98,13 +99,14 @@ const createTicket = async (req, res) => {
       }
     } else if (ticketType === "Device Issue") {
       if (req.files) deleteFiles(processUploadedFiles(req.files));
-      return res.status(400).json({ success: false, message: "deviceId is required for Device Issues." });
+      return res.status(400).json({
+        success: false,
+        message: "deviceId is required for Device Issues."
+      });
     }
 
     // 4. Validate Project Association (If projectId is provided)
     if (projectId) {
-      // Logic: Check if project exists. 
-      // If you have a UserProject join table, you should verify the link here.
       const project = await Project.findByPk(projectId);
       if (!project) {
         if (req.files) deleteFiles(processUploadedFiles(req.files));
@@ -113,21 +115,24 @@ const createTicket = async (req, res) => {
           message: `Invalid Project: Project with ID ${projectId} does not exist.`,
         });
       }
-      
-      // Optional: If users must be assigned to projects to raise tickets:
-      /*
-      const isAssigned = await user.hasProject(project); 
-      if (!isAssigned) {
-         return res.status(403).json({ message: "User is not associated with this project." });
-      }
-      */
     } else if (ticketType === "Project Issue") {
       if (req.files) deleteFiles(processUploadedFiles(req.files));
-      return res.status(400).json({ success: false, message: "projectId is required for Project Issues." });
+      return res.status(400).json({
+        success: false,
+        message: "projectId is required for Project Issues."
+      });
     }
 
     // 5. Check Allowed Ticket Types
-    const allowedTypes = ["Device Issue", "Project Issue", "General Query", "Payment Issue", "Feature Request", "Bug Report", "Other"];
+    const allowedTypes = [
+      "Device Issue",
+      "Project Issue",
+      "General Query",
+      "Payment Issue",
+      "Feature Request",
+      "Bug Report",
+      "Other"
+    ];
     if (!allowedTypes.includes(ticketType)) {
       return res.status(400).json({
         success: false,
@@ -140,7 +145,9 @@ const createTicket = async (req, res) => {
     let parsedTags = [];
     try {
       parsedTags = typeof tags === "string" ? JSON.parse(tags) : (Array.isArray(tags) ? tags : []);
-    } catch (e) { parsedTags = []; }
+    } catch (e) {
+      parsedTags = [];
+    }
 
     // 6. Create the Ticket
     const ticketId = generateTicketId();
@@ -162,6 +169,24 @@ const createTicket = async (req, res) => {
     // Log the creation
     await logTicketAction(ticket.id, userId, "Created", null, "Ticket created", req);
 
+
+    try {
+      const emailResult = await zeptoMailService.sendTicketReceivedEmail(
+        user.email,
+        user.username,
+        ticket.ticketId
+      );
+
+      if (emailResult.success) {
+        console.log(`✅ Ticket received email sent to ${user.email}`);
+      } else {
+        console.error(`⚠️ Failed to send ticket received email: ${emailResult.error}`);
+      }
+    } catch (emailError) {
+      // Log error but don't fail ticket creation
+      console.error("Email sending error:", emailError);
+    }
+
     res.status(201).json({
       success: true,
       message: "Ticket created successfully",
@@ -180,9 +205,11 @@ const createTicket = async (req, res) => {
 };
 
 
+
+// Update getTickets controller
 const getTickets = async (req, res) => {
-  console.log('🔍 USING UPDATED getTickets CONTROLLER'); // ✅ Add this line
-  
+  console.log('🔍 USING UPDATED getTickets CONTROLLER');
+
   try {
     const {
       page = 1,
@@ -202,11 +229,12 @@ const getTickets = async (req, res) => {
     const offset = (page - 1) * limit;
     const where = {};
 
-    // Apply filters
-    if (status) where.ticketStatus = status;
-    if (type) where.ticketType = type;
-    if (priority) where.priority = priority;
-    if (userId) {
+    // ✅ IMPORTANT: Users can only see their own tickets
+    // Admins can see all tickets or filter by userId
+    if (req.user.role === 'user') {
+      where.userId = req.user.id; // Users only see their own tickets
+    } else if (userId) {
+      // Admins can filter by userId
       const user = await User.findByPk(userId);
       if (!user) {
         return res.status(400).json({
@@ -217,6 +245,11 @@ const getTickets = async (req, res) => {
       }
       where.userId = parseInt(userId);
     }
+
+    // Apply other filters
+    if (status) where.ticketStatus = status;
+    if (type) where.ticketType = type;
+    if (priority) where.priority = priority;
     if (assignedTo) where.assignedTo = assignedTo;
     if (deviceId) where.deviceId = deviceId;
     if (projectId) where.projectId = projectId;
@@ -231,11 +264,10 @@ const getTickets = async (req, res) => {
 
     console.log('WHERE CLAUSE:', JSON.stringify(where, null, 2));
 
-    // ✅ IMPORTANT: Define includes as a separate variable so we can verify it
     const includeConfig = [
-      { 
-        model: User, 
-        as: "user", 
+      {
+        model: User,
+        as: "user",
         attributes: ["id", "username", "email"],
         required: false
       },
@@ -243,7 +275,7 @@ const getTickets = async (req, res) => {
         model: User,
         as: "assignedUser",
         attributes: ["id", "username", "email"],
-        required: false  // This MUST be false
+        required: false
       },
       {
         model: Device,
@@ -261,12 +293,10 @@ const getTickets = async (req, res) => {
         model: Query,
         as: "queries",
         attributes: ["id", "title", "queryType", "isResolved"],
-        separate: true, // ✅ Use separate instead of limit with order
+        separate: true,
         required: false
       },
     ];
-
-    console.log('INCLUDE CONFIG:', JSON.stringify(includeConfig, null, 2)); // ✅ Log the config
 
     const { count, rows } = await Ticket.findAndCountAll({
       where,
@@ -274,7 +304,7 @@ const getTickets = async (req, res) => {
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [[sortBy, sortOrder.toUpperCase()]],
-      logging: console.log, // This will show the SQL
+      logging: console.log,
     });
 
     console.log('FOUND COUNT:', count);
@@ -302,15 +332,18 @@ const getTickets = async (req, res) => {
   }
 };
 
+// Update getTicketById controller
 const getTicketById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Determine if the id is a numeric ID or a ticketId (string format like TKT-XXX-XXX)
     const isNumericId = !isNaN(id) && Number.isInteger(Number(id));
-    
-    // Build the query based on whether it's a numeric ID or ticketId
     const whereClause = isNumericId ? { id: parseInt(id) } : { ticketId: id };
+
+    // ✅ Users can only view their own tickets
+    if (req.user.role === 'user') {
+      whereClause.userId = req.user.id;
+    }
 
     const ticket = await Ticket.findOne({
       where: whereClause,
@@ -392,7 +425,9 @@ const getTicketById = async (req, res) => {
     if (!ticket) {
       return res.status(404).json({
         success: false,
-        message: "Ticket not found",
+        message: req.user.role === 'user'
+          ? "Ticket not found or you don't have permission to view it"
+          : "Ticket not found",
       });
     }
 
@@ -410,6 +445,7 @@ const getTicketById = async (req, res) => {
   }
 };
 
+
 // Mark ticket as read
 const markTicketAsRead = async (req, res) => {
   try {
@@ -421,7 +457,7 @@ const markTicketAsRead = async (req, res) => {
     const whereClause = isNumericId ? { id: parseInt(id) } : { ticketId: id };
 
     const ticket = await Ticket.findOne({ where: whereClause });
-    
+
     if (!ticket) {
       return res.status(404).json({
         success: false,
@@ -604,7 +640,27 @@ const resolveTicket = async (req, res) => {
     const { id } = req.params;
     const { resolvedBy, resolutionNotes } = req.body;
 
-    const ticket = await Ticket.findByPk(id);
+    // ✅ Validate that resolvedBy user exists
+    if (resolvedBy) {
+      const resolver = await User.findByPk(resolvedBy);
+      if (!resolver) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid resolvedBy: User with ID ${resolvedBy} does not exist.`,
+        });
+      }
+    }
+
+    const ticket = await Ticket.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "username", "email"]
+        }
+      ]
+    });
+
     if (!ticket) {
       return res.status(404).json({
         success: false,
@@ -615,11 +671,11 @@ const resolveTicket = async (req, res) => {
     const resolvedAt = new Date();
     const actualResolutionTime = Math.floor(
       (resolvedAt - ticket.createdAt) / (1000 * 60)
-    ); // in minutes
+    );
 
     await ticket.update({
       ticketStatus: "Resolved",
-      resolvedBy,
+      resolvedBy: resolvedBy || null, // ✅ Allow null if not provided
       resolvedAt,
       actualResolutionTime,
       remarks: resolutionNotes || ticket.remarks,
@@ -628,13 +684,31 @@ const resolveTicket = async (req, res) => {
     // Log the resolution
     await logTicketAction(
       ticket.id,
-      resolvedBy,
+      resolvedBy || ticket.userId, // ✅ Use ticket creator if resolvedBy not provided
       "Resolved",
       "Open/In Progress",
       "Resolved",
       req,
       `Ticket resolved: ${resolutionNotes || "No notes provided"}`
     );
+
+    // Send email
+    try {
+      const emailResult = await zeptoMailService.sendTicketResolvedEmail(
+        ticket.user.email,
+        ticket.user.username,
+        ticket.ticketId,
+        resolutionNotes || ticket.remarks || "Your issue has been resolved successfully."
+      );
+
+      if (emailResult.success) {
+        console.log(`✅ Ticket resolved email sent to ${ticket.user.email}`);
+      } else {
+        console.error(`⚠️ Failed to send ticket resolved email: ${emailResult.error}`);
+      }
+    } catch (emailError) {
+      console.error("Email sending error:", emailError);
+    }
 
     const updatedTicket = await Ticket.findByPk(id, {
       include: [
@@ -661,6 +735,8 @@ const resolveTicket = async (req, res) => {
     });
   }
 };
+
+
 
 const escalateTicket = async (req, res) => {
   try {

@@ -17,31 +17,73 @@ const {
   markTicketAsRead
 } = require("../controllers/ticket.controller");
 
+// Import authentication middleware
+const { authenticate, authorizeRoles } = require("../middleware/auth");
+
 // Import upload middleware
 const { upload, handleMulterError } = require("../middleware/upload");
 
-// Create a new ticket with file uploads
-router.post("/", upload.array('attachments', 10), handleMulterError, createTicket);
+// ============== PUBLIC/USER ROUTES ==============
 
-// Get all tickets with filters and pagination
-router.get("/", getTickets);
+/**
+ * Create a new ticket (Any authenticated user)
+ * POST /api/tickets
+ */
+router.post(
+  "/",
+  authenticate,
+  upload.array('attachments', 10),
+  handleMulterError,
+  createTicket
+);
 
-// Get ticket statistics
-router.get("/stats", getTicketStats);
+/**
+ * Get all tickets with filters
+ * Users see only their tickets, Admins see all
+ * GET /api/tickets
+ */
+router.get("/", authenticate, getTickets);
 
-// Route to serve uploaded files/images
-router.get("/attachments/:filename", (req, res) => {
+/**
+ * Get ticket statistics
+ * GET /api/tickets/stats
+ */
+router.get("/stats", authenticate, getTicketStats);
+
+/**
+ * Get specific ticket by ID or ticketId
+ * Users can only view their own tickets, Admins can view all
+ * GET /api/tickets/:id
+ */
+router.get("/:id", authenticate, getTicketById);
+
+/**
+ * Get ticket history/logs
+ * GET /api/tickets/:id/history
+ */
+router.get("/:id/history", authenticate, getTicketHistory);
+
+/**
+ * Mark ticket as read
+ * PATCH /api/tickets/:id/read
+ */
+router.patch("/:id/read", authenticate, markTicketAsRead);
+
+// ============== FILE SERVING ROUTES ==============
+
+/**
+ * Serve uploaded files/images
+ * GET /api/tickets/attachments/:filename
+ */
+router.get("/attachments/:filename", authenticate, (req, res) => {
   const filename = req.params.filename;
   const filepath = path.join(__dirname, '../uploads/ticketImages', filename);
 
-  // Check if file exists
   if (fs.existsSync(filepath)) {
-    // Set appropriate headers for images
     const ext = path.extname(filename).toLowerCase();
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
 
     if (imageExtensions.includes(ext)) {
-      // Set content type for images
       const contentType = {
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
@@ -51,7 +93,6 @@ router.get("/attachments/:filename", (req, res) => {
         '.bmp': 'image/bmp',
         '.svg': 'image/svg+xml'
       };
-
       res.setHeader('Content-Type', contentType[ext] || 'image/jpeg');
     }
 
@@ -64,14 +105,15 @@ router.get("/attachments/:filename", (req, res) => {
   }
 });
 
-// Route to download attachment (with original filename)
-router.get("/download/:filename", (req, res) => {
+/**
+ * Download attachment
+ * GET /api/tickets/download/:filename
+ */
+router.get("/download/:filename", authenticate, (req, res) => {
   const filename = req.params.filename;
   const filepath = path.join(__dirname, '../uploads/ticketImages', filename);
 
-  // Check if file exists
   if (fs.existsSync(filepath)) {
-    // You can store original filename in database and use it here
     res.download(filepath, filename, (err) => {
       if (err) {
         console.error("Error downloading file:", err);
@@ -89,32 +131,11 @@ router.get("/download/:filename", (req, res) => {
   }
 });
 
-// Get specific ticket by ID
-router.get("/:id", getTicketById);
-
-// Update ticket
-router.put("/:id", updateTicket);
-
-// Delete ticket
-router.delete("/:id", deleteTicket);
-
-// Assign ticket to user
-router.patch("/:id/assign", assignTicket);
-
-
-router.patch("/:id/read", markTicketAsRead);
-
-// Resolve ticket
-router.patch("/:id/resolve", resolveTicket);
-
-// Escalate ticket
-router.patch("/:id/escalate", escalateTicket);
-
-// Get ticket history/logs
-router.get("/:id/history", getTicketHistory);
-
-// Route to get ticket attachments metadata
-router.get("/:id/attachments", async (req, res) => {
+/**
+ * Get ticket attachments metadata
+ * GET /api/tickets/:id/attachments
+ */
+router.get("/:id/attachments", authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     const Ticket = require("../model/ticket.model");
@@ -146,5 +167,62 @@ router.get("/:id/attachments", async (req, res) => {
     });
   }
 });
+
+// ============== ADMIN/SUPER_ADMIN ONLY ROUTES ==============
+
+/**
+ * Update ticket (Admin only)
+ * PUT /api/tickets/:id
+ */
+router.put(
+  "/:id",
+  authenticate,
+  authorizeRoles('admin', 'super_admin'),
+  updateTicket
+);
+
+/**
+ * Assign ticket to user (Admin only)
+ * PATCH /api/tickets/:id/assign
+ */
+router.patch(
+  "/:id/assign",
+  authenticate,
+  authorizeRoles('admin', 'super_admin'),
+  assignTicket
+);
+
+/**
+ * Resolve ticket (Admin only)
+ * PATCH /api/tickets/:id/resolve
+ */
+router.patch(
+  "/:id/resolve",
+  authenticate,
+  authorizeRoles('admin', 'super_admin'),
+  resolveTicket
+);
+
+/**
+ * Escalate ticket (Admin only)
+ * PATCH /api/tickets/:id/escalate
+ */
+router.patch(
+  "/:id/escalate",
+  authenticate,
+  authorizeRoles('admin', 'super_admin'),
+  escalateTicket
+);
+
+/**
+ * Delete ticket (Admin only)
+ * DELETE /api/tickets/:id
+ */
+router.delete(
+  "/:id",
+  authenticate,
+  authorizeRoles('admin', 'super_admin'),
+  deleteTicket
+);
 
 module.exports = router;

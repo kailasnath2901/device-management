@@ -1,3 +1,4 @@
+// controllers/query.controller.js
 const { Op } = require("sequelize");
 const Query = require("../model/query.model");
 const QueryLog = require("../model/query-log.model");
@@ -36,6 +37,23 @@ const createQuery = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Ticket not found",
+      });
+    }
+
+    // ✅ Users can only create queries on their own tickets
+    // Admins can create queries on any ticket
+    if (req.user.role === 'user' && ticket.userId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: You can only add queries to your own tickets",
+      });
+    }
+
+    // ✅ Validate userId matches authenticated user (unless admin)
+    if (req.user.role === 'user' && parseInt(userId) !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: userId must match your authenticated user ID",
       });
     }
 
@@ -100,7 +118,35 @@ const getQueries = async (req, res) => {
     const offset = (page - 1) * limit;
     const where = {};
 
-    // Apply filters
+    // ✅ Users can only see queries from their own tickets
+    if (req.user.role === 'user') {
+      // Get all tickets belonging to this user
+      const userTickets = await Ticket.findAll({
+        where: { userId: req.user.id },
+        attributes: ['id']
+      });
+      const userTicketIds = userTickets.map(t => t.id);
+      
+      if (userTicketIds.length > 0) {
+        where.ticketId = { [Op.in]: userTicketIds };
+      } else {
+        // User has no tickets, return empty result
+        return res.json({
+          success: true,
+          data: {
+            queries: [],
+            pagination: {
+              currentPage: parseInt(page),
+              totalPages: 0,
+              totalItems: 0,
+              itemsPerPage: parseInt(limit),
+            },
+          },
+        });
+      }
+    }
+
+    // Apply other filters
     if (ticketId) where.ticketId = ticketId;
     if (userId) where.userId = userId;
     if (queryType) where.queryType = queryType;
@@ -122,32 +168,32 @@ const getQueries = async (req, res) => {
           model: User, 
           as: "user", 
           attributes: ["id", "username", "email"],
-          required: false  // ✅ Add this
+          required: false
         },
         { 
           model: User, 
           as: "resolver", 
           attributes: ["id", "username", "email"],
-          required: false  // ✅ Add this
+          required: false
         },
         { 
           model: Ticket, 
           as: "ticket", 
           attributes: ["id", "ticketId", "title", "ticketStatus"],
-          required: false  // ✅ Add this
+          required: false
         },
         { 
           model: Query, 
           as: "parentQuery", 
           attributes: ["id", "title"],
-          required: false  // ✅ Add this
+          required: false
         },
         {
           model: Query,
           as: "childQueries",
           attributes: ["id", "title", "queryType", "isResolved"],
-          separate: true,  // ✅ Use separate instead of limit
-          required: false  // ✅ Add this
+          separate: true,
+          required: false
         },
       ],
       limit: parseInt(limit),
@@ -188,36 +234,36 @@ const getQueryById = async (req, res) => {
           model: User, 
           as: "user", 
           attributes: ["id", "username", "email", "mobile_no"],
-          required: false  // ✅ Add this
+          required: false
         },
         { 
           model: User, 
           as: "resolver", 
           attributes: ["id", "username", "email"],
-          required: false  // ✅ Add this
+          required: false
         },
         { 
           model: Ticket, 
           as: "ticket", 
-          attributes: ["id", "ticketId", "title", "ticketStatus"],
-          required: false  // ✅ Add this
+          attributes: ["id", "ticketId", "title", "ticketStatus", "userId"],
+          required: false
         },
         { 
           model: Query, 
           as: "parentQuery", 
           attributes: ["id", "title", "description"],
-          required: false  // ✅ Add this
+          required: false
         },
         {
           model: Query,
           as: "childQueries",
-          required: false,  // ✅ Add this
+          required: false,
           include: [
             { 
               model: User, 
               as: "user", 
               attributes: ["id", "username", "email"],
-              required: false  // ✅ Add this
+              required: false
             },
           ],
           order: [["createdAt", "ASC"]],
@@ -225,13 +271,13 @@ const getQueryById = async (req, res) => {
         {
           model: QueryLog,
           as: "logs",
-          required: false,  // ✅ Add this
+          required: false,
           include: [
             { 
               model: User, 
               as: "user", 
               attributes: ["id", "username", "email"],
-              required: false  // ✅ Add this
+              required: false
             }
           ],
           order: [["createdAt", "DESC"]],
@@ -244,6 +290,14 @@ const getQueryById = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Query not found",
+      });
+    }
+
+    // ✅ Users can only view queries from their own tickets
+    if (req.user.role === 'user' && query.ticket && query.ticket.userId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: You can only view queries from your own tickets",
       });
     }
 
@@ -267,7 +321,15 @@ const markQueryAsRead = async (req, res) => {
     const { id } = req.params;
     const { readBy } = req.body;
 
-    const query = await Query.findByPk(id);
+    const query = await Query.findByPk(id, {
+      include: [
+        { 
+          model: Ticket, 
+          as: "ticket", 
+          attributes: ["id", "userId"]
+        }
+      ]
+    });
     
     if (!query) {
       return res.status(404).json({
@@ -276,19 +338,27 @@ const markQueryAsRead = async (req, res) => {
       });
     }
 
+    // ✅ Users can only mark as read queries from their own tickets
+    if (req.user.role === 'user' && query.ticket && query.ticket.userId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: You can only mark queries from your own tickets as read",
+      });
+    }
+
     // Only update if not already read
     if (!query.isRead) {
       await query.update({
         isRead: true,
         readAt: new Date(),
-        readBy: readBy || null,
+        readBy: readBy || req.user.id,
       });
 
       // Log the action
       await logQueryAction(
         query.id,
         query.ticketId,
-        readBy,
+        readBy || req.user.id,
         "Read",
         false,
         true,
@@ -316,8 +386,7 @@ const markQueryAsRead = async (req, res) => {
   }
 };
 
-
-// Update query
+// Update query (Admin only)
 const updateQuery = async (req, res) => {
   try {
     const { id } = req.params;
@@ -346,7 +415,7 @@ const updateQuery = async (req, res) => {
       await logQueryAction(
         query.id,
         query.ticketId,
-        userId,
+        userId || req.user.id,
         "Updated",
         change.old,
         change.new,
@@ -377,11 +446,22 @@ const updateQuery = async (req, res) => {
   }
 };
 
-// Resolve query
+// Resolve query (Admin only)
 const resolveQuery = async (req, res) => {
   try {
     const { id } = req.params;
     const { resolvedBy, resolutionNotes } = req.body;
+
+    // ✅ Validate that resolvedBy user exists
+    if (resolvedBy) {
+      const resolver = await User.findByPk(resolvedBy);
+      if (!resolver) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid resolvedBy: User with ID ${resolvedBy} does not exist.`,
+        });
+      }
+    }
 
     const query = await Query.findByPk(id);
     if (!query) {
@@ -393,7 +473,7 @@ const resolveQuery = async (req, res) => {
 
     await query.update({
       isResolved: true,
-      resolvedBy,
+      resolvedBy: resolvedBy || req.user.id,
       resolvedAt: new Date(),
       remarks: resolutionNotes || query.remarks,
     });
@@ -402,7 +482,7 @@ const resolveQuery = async (req, res) => {
     await logQueryAction(
       query.id,
       query.ticketId,
-      resolvedBy,
+      resolvedBy || req.user.id,
       "Resolved",
       "Unresolved",
       "Resolved",
@@ -438,6 +518,32 @@ const getQueryHistory = async (req, res) => {
     const { id } = req.params;
     const { page = 1, limit = 20 } = req.query;
 
+    // Check if query exists and user has access
+    const query = await Query.findByPk(id, {
+      include: [
+        { 
+          model: Ticket, 
+          as: "ticket", 
+          attributes: ["id", "userId"]
+        }
+      ]
+    });
+
+    if (!query) {
+      return res.status(404).json({
+        success: false,
+        message: "Query not found",
+      });
+    }
+
+    // ✅ Users can only view history from their own tickets
+    if (req.user.role === 'user' && query.ticket && query.ticket.userId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: You can only view history from your own tickets",
+      });
+    }
+
     const offset = (page - 1) * limit;
 
     const { count, rows } = await QueryLog.findAndCountAll({
@@ -472,7 +578,7 @@ const getQueryHistory = async (req, res) => {
   }
 };
 
-// Delete query (soft delete)
+// Delete query (Admin only - soft delete)
 const deleteQuery = async (req, res) => {
   try {
     const { id } = req.params;
@@ -492,7 +598,7 @@ const deleteQuery = async (req, res) => {
     await logQueryAction(
       query.id,
       query.ticketId,
-      deletedBy,
+      deletedBy || req.user.id,
       "Deleted",
       "Active",
       "Deleted",

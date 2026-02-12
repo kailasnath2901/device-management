@@ -40,111 +40,111 @@ class ZeptoMailService {
 
 
   async sendOTP(email, otp, purpose = "verification") {
-  try {
-    const mailOptions = {
-      template_key: this.templates.otp_verification,  // Add template_key here
-      from: {
-        address: this.emailConfig.noreplyEmail,
-        name: `${this.emailConfig.brandName} Security`,
-      },
-      to: [
-        {
-          email_address: {
-            address: email,
-            name: email.split("@")[0],
-          },
+    try {
+      const mailOptions = {
+        template_key: this.templates.otp_verification,  // Add template_key here
+        from: {
+          address: this.emailConfig.noreplyEmail,
+          name: `${this.emailConfig.brandName} Security`,
         },
-      ],
-      merge_info: {
-        OTP: otp,
-        purpose: purpose === "login" ? "Login Verification" : "Email Verification",
-        expiry: "10 minutes",
-        brandName: this.emailConfig.brandName,
-        supportEmail: this.emailConfig.supportEmail,
-      },
-    };
-
-    console.log("Sending OTP Template...");
-
-    // Pass the entire mailOptions object as a single parameter
-    const response = await this.templateClient.sendMailWithTemplate(mailOptions);
-
-    console.log("ZeptoMail Success:", response);
-    return { success: true, messageId: response.message_id || response.request_id };
-  } catch (error) {
-    console.error("ZeptoMail OTP Failed:", error);
-    throw new Error(`Failed to send OTP: ${JSON.stringify(error)}`);
-  }
-}
-
-async sendWelcomeEmail(email, username) {
-  try {
-    const mailOptions = {
-      template_key: this.templates.welcome,  // Add template_key here
-      from: {
-        address: this.emailConfig.noreplyEmail,
-        name: `${this.emailConfig.brandName} Team`,
-      },
-      to: [
-        {
-          email_address: {
-            address: email,
-            name: username,
+        to: [
+          {
+            email_address: {
+              address: email,
+              name: email.split("@")[0],
+            },
           },
+        ],
+        merge_info: {
+          OTP: otp,
+          purpose: purpose === "login" ? "Login Verification" : "Email Verification",
+          expiry: "10 minutes",
+          brandName: this.emailConfig.brandName,
+          supportEmail: this.emailConfig.supportEmail,
         },
-      ],
-      merge_info: {
-        name: username,
-        brandName: this.emailConfig.brandName,
-      },
-    };
+      };
 
-    const response = await this.templateClient.sendMailWithTemplate(mailOptions);
-    return { success: true, messageId: response.message_id };
-  } catch (error) {
-    console.error("Welcome Email Failed:", error);
-    return { success: false, error: error };
+      console.log("Sending OTP Template...");
+
+      // Pass the entire mailOptions object as a single parameter
+      const response = await this.templateClient.sendMailWithTemplate(mailOptions);
+
+      console.log("ZeptoMail Success:", response);
+      return { success: true, messageId: response.message_id || response.request_id };
+    } catch (error) {
+      console.error("ZeptoMail OTP Failed:", error);
+      throw new Error(`Failed to send OTP: ${JSON.stringify(error)}`);
+    }
   }
-}
 
-/**
- * Send Password Reset OTP using a Template
- */
-async sendPasswordResetOTP(email, otp) {
-  try {
-    const mailOptions = {
-      template_key: this.templates.password_reset,
-      from: {
-        address: this.emailConfig.noreplyEmail,
-        name: `${this.emailConfig.brandName} Security`,
-      },
-      to: [
-        {
-          email_address: {
-            address: email,
-            name: email.split("@")[0],
+  async sendWelcomeEmail(email, username) {
+    try {
+      const mailOptions = {
+        template_key: this.templates.welcome,  // Add template_key here
+        from: {
+          address: this.emailConfig.noreplyEmail,
+          name: `${this.emailConfig.brandName} Team`,
+        },
+        to: [
+          {
+            email_address: {
+              address: email,
+              name: username,
+            },
           },
+        ],
+        merge_info: {
+          name: username,
+          brandName: this.emailConfig.brandName,
         },
-      ],
-      merge_info: {
-        OTP: otp,
-        expiry: "10 minutes",
-        brandName: this.emailConfig.brandName,
-        supportEmail: this.emailConfig.supportEmail,
-      },
-    };
+      };
 
-    console.log("Sending Password Reset OTP Template...");
-
-    const response = await this.templateClient.sendMailWithTemplate(mailOptions);
-
-    console.log("ZeptoMail Password Reset Success:", response);
-    return { success: true, messageId: response.message_id || response.request_id };
-  } catch (error) {
-    console.error("ZeptoMail Password Reset Failed:", error);
-    throw new Error(`Failed to send password reset OTP: ${JSON.stringify(error)}`);
+      const response = await this.templateClient.sendMailWithTemplate(mailOptions);
+      return { success: true, messageId: response.message_id };
+    } catch (error) {
+      console.error("Welcome Email Failed:", error);
+      return { success: false, error: error };
+    }
   }
-}
+
+  /**
+   * Send Password Reset OTP using a Template
+   */
+  async sendPasswordResetOTP(email, otp) {
+    try {
+      const mailOptions = {
+        template_key: this.templates.password_reset,
+        from: {
+          address: this.emailConfig.noreplyEmail,
+          name: `${this.emailConfig.brandName} Security`,
+        },
+        to: [
+          {
+            email_address: {
+              address: email,
+              name: email.split("@")[0],
+            },
+          },
+        ],
+        merge_info: {
+          OTP: otp,
+          expiry: "10 minutes",
+          brandName: this.emailConfig.brandName,
+          supportEmail: this.emailConfig.supportEmail,
+        },
+      };
+
+      console.log("Sending Password Reset OTP Template...");
+
+      const response = await this.templateClient.sendMailWithTemplate(mailOptions);
+
+      console.log("ZeptoMail Password Reset Success:", response);
+      return { success: true, messageId: response.message_id || response.request_id };
+    } catch (error) {
+      console.error("ZeptoMail Password Reset Failed:", error);
+      throw new Error(`Failed to send password reset OTP: ${JSON.stringify(error)}`);
+    }
+  }
 
 
   /**
@@ -176,6 +176,96 @@ async sendPasswordResetOTP(email, otp) {
       throw new Error("Failed to send raw email");
     }
   }
+
+  async sendTicketReceivedEmail(userEmail, userName, ticketId) {
+    try {
+      const mailOptions = {
+        template_key: process.env.ZEPTOMAIL_TICKET_RECEIVED_TEMPLATE_KEY, // Add this to your .env
+        from: {
+          address: this.emailConfig.noreplyEmail,
+          name: `${this.emailConfig.brandName} Support`,
+        },
+        to: [
+          {
+            email_address: {
+              address: userEmail,
+              name: userName,
+            },
+          },
+        ],
+        merge_info: {
+          name: userName,
+          ticket_id: ticketId,
+          brandName: this.emailConfig.brandName,
+          supportEmail: this.emailConfig.supportEmail,
+        },
+      };
+
+      console.log("Sending Ticket Received Email...");
+
+      const response = await this.templateClient.sendMailWithTemplate(mailOptions);
+
+      console.log("Ticket Received Email Success:", response);
+      return {
+        success: true,
+        messageId: response.message_id || response.request_id
+      };
+    } catch (error) {
+      console.error("Ticket Received Email Failed:", error);
+      // Don't throw error - ticket creation should succeed even if email fails
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Send Ticket Resolved Notification
+   */
+  async sendTicketResolvedEmail(userEmail, userName, ticketId, remarks) {
+    try {
+      const mailOptions = {
+        template_key: process.env.ZEPTOMAIL_TICKET_RESOLVED_TEMPLATE_KEY,
+        from: {
+          address: this.emailConfig.noreplyEmail,
+          name: `${this.emailConfig.brandName} Support`,
+        },
+        to: [
+          {
+            email_address: {
+              address: userEmail,
+              name: userName,
+            },
+          },
+        ],
+        merge_info: {
+          name: userName,
+          ticket_id: ticketId,
+          remarks: remarks || "Your issue has been resolved successfully.",
+          brandName: this.emailConfig.brandName,
+          supportEmail: this.emailConfig.supportEmail,
+        },
+      };
+
+      console.log("Sending Ticket Resolved Email...");
+
+      const response = await this.templateClient.sendMailWithTemplate(mailOptions);
+
+      console.log("Ticket Resolved Email Success:", response);
+      return {
+        success: true,
+        messageId: response.message_id || response.request_id
+      };
+    } catch (error) {
+      console.error("Ticket Resolved Email Failed:", error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
 }
 
 module.exports = new ZeptoMailService();
