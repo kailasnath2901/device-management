@@ -250,61 +250,76 @@ class UserService {
       throw error;
     }
   }
+  // services/user.services.js
 
   async getAllUsers(requestingUser, options = {}) {
-    const { page = 1, limit = 10 } = options;
+    const { page = 1, limit = 10, role } = options;
     const offset = (page - 1) * limit;
+
+    // Define the base where clause
+    const whereCondition = {};
+
+    // Apply role filtering if provided
+    if (role) {
+      // Validate that the provided role is one of the ENUM values
+      const validRoles = ["user", "admin", "super_admin", "tester"];
+      if (validRoles.includes(role)) {
+        whereCondition.role = role;
+      }
+    }
 
     const queryOptions = {
       attributes: [
-        "id",
-        "username",
-        "email",
-        "role",
-        "createdAt",
-        "last_login",
-        "is_email_verified",
-        "user_category",
-        "coupon_points",
+        "id", "username", "email", "role", "createdAt",
+        "last_login", "is_email_verified", "user_category", "coupon_points",
       ],
       limit: parseInt(limit, 10),
       offset: parseInt(offset, 10),
       order: [["createdAt", "DESC"]],
       distinct: true,
+      where: whereCondition, // Attach the filters here
     };
 
+    // --- Permissions Logic ---
+
+    // 1. Super Admin: Can see everything or filter by any role
     if (requestingUser.role === "super_admin") {
       const { count, rows } = await User.findAndCountAll(queryOptions);
-
-      return {
-        users: rows,
-        totalUsers: count,
-        totalPages: Math.ceil(count / limit),
-        currentPage: parseInt(page, 10),
-        hasNextPage: page < Math.ceil(count / limit),
-        hasPrevPage: page > 1,
-      };
+      return this._formatUserResponse(count, rows, page, limit);
     }
 
+    // 2. Admin: Limited to seeing 'user' or 'tester' roles only
     if (requestingUser.role === "admin") {
-      queryOptions.where = {
-        role: "user",
-      };
+      const allowedForAdmin = ["user", "tester"];
+
+      if (role && !allowedForAdmin.includes(role)) {
+        throw new Error("Unauthorized: Admins can only filter for Users or Testers");
+      }
+
+      // Force filter if no specific allowed role was requested
+      if (!role) {
+        whereCondition.role = { [Op.in]: allowedForAdmin };
+      }
 
       const { count, rows } = await User.findAndCountAll(queryOptions);
-
-      return {
-        users: rows,
-        totalUsers: count,
-        totalPages: Math.ceil(count / limit),
-        currentPage: parseInt(page, 10),
-        hasNextPage: page < Math.ceil(count / limit),
-        hasPrevPage: page > 1,
-      };
+      return this._formatUserResponse(count, rows, page, limit);
     }
 
     throw new Error("Unauthorized access");
   }
+
+  
+  _formatUserResponse(count, rows, page, limit) {
+    return {
+      users: rows,
+      totalUsers: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: parseInt(page, 10),
+      hasNextPage: page < Math.ceil(count / limit),
+      hasPrevPage: page > 1,
+    };
+  }
+
 
   // Request password reset OTP
   async requestPasswordResetOTP(email) {

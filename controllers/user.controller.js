@@ -285,11 +285,11 @@ exports.deleteUser = async (req, res) => {
 exports.getAllUsers = async (req, res) => {
   try {
     // Extract pagination parameters from query string
-    const { page, limit } = req.query;
+   const { page, limit, role } = req.query;
 
-    // Validate pagination parameters
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
+
 
     // Validate page and limit values
     if (pageNum < 1) {
@@ -309,6 +309,7 @@ exports.getAllUsers = async (req, res) => {
     const result = await userService.getAllUsers(req.user, {
       page: pageNum,
       limit: limitNum,
+      role: role,
     });
 
     res.json({
