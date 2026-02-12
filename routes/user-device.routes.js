@@ -37,8 +37,10 @@ router.delete('/admin/devices/:deviceId',
 
 // upload or add device files to device
 
+// upload or add device files to device
 router.post(
   "/:deviceId/upload-file",
+  authenticate, // <--- ADD THIS
   authorizeRoles('admin', 'super_admin'),
   uploadDeviceFile,
   handleDeviceFileUploadError,
@@ -47,22 +49,24 @@ router.post(
 
 router.get(
   "/:deviceId/file",
+  authenticate, // <--- ADD THIS
   authorizeRoles('admin', 'super_admin'),
   deviceController.getDeviceFile
 );
 
 router.delete(
   "/:deviceId/file",
+  authenticate, // <--- ADD THIS
   authorizeRoles('admin', 'super_admin'),
   deviceController.deleteDeviceFile
 );
 
 router.get(
   "/:deviceId/download-file",
+  authenticate, // <--- ADD THIS
   authorizeRoles('admin', 'super_admin'),
   deviceController.downloadDeviceFile
 );
-
 
 // Update device nickname (users can update their own device nicknames)
 router.patch('/nickname/:serialNumber',
