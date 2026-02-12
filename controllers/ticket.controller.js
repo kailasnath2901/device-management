@@ -837,13 +837,15 @@ const getTicketStats = async (req, res) => {
         [
           require("sequelize").fn(
             "AVG",
-            require("sequelize").col("actualResolutionTime")
+            // Use the actual database column name here
+            require("sequelize").col("actual_resolution_time")
           ),
           "avgTime",
         ],
       ],
       raw: true,
     });
+
 
     res.json({
       success: true,
