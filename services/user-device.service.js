@@ -836,10 +836,13 @@ class DeviceService {
   /**
    * Get device file
    */
+  /**
+   * Get device file by deviceId
+   */
   async getDeviceFile(deviceId) {
     try {
       const device = await Device.findByPk(deviceId, {
-        attributes: ["id", "deviceName", "deviceFile", "deviceFileName", "isModified"]
+        attributes: ["id", "deviceName", "serialNumber", "deviceFile", "deviceFileName", "isModified"]
       });
 
       if (!device) {
@@ -850,6 +853,8 @@ class DeviceService {
         return {
           success: false,
           message: "No file found for this device",
+          deviceId: device.id,
+          serialNumber: device.serialNumber,
           deviceFile: null,
           deviceFileName: null,
           isModified: device.isModified,
@@ -863,6 +868,8 @@ class DeviceService {
 
       return {
         success: true,
+        deviceId: device.id,
+        serialNumber: device.serialNumber,
         deviceFile: device.deviceFile,
         deviceFileName: device.deviceFileName,
         isModified: device.isModified,
@@ -872,6 +879,54 @@ class DeviceService {
       throw error;
     }
   }
+
+  /**
+   * Get device file by serialNumber (NEW METHOD)
+   */
+  async getDeviceFileBySerial(serialNumber) {
+    try {
+      const device = await Device.findOne({
+        where: { serialNumber },
+        attributes: ["id", "deviceName", "serialNumber", "deviceFile", "deviceFileName", "isModified"]
+      });
+
+      if (!device) {
+        throw new Error("Device not found with the provided serial number");
+      }
+
+      if (!device.deviceFile) {
+        return {
+          success: false,
+          message: "No file found for this device",
+          deviceId: device.id,
+          serialNumber: device.serialNumber,
+          deviceFile: null,
+          deviceFileName: null,
+          isModified: device.isModified,
+          publicUrl: null
+        };
+      }
+
+      // Get full URL
+      const baseUrl = this.getBaseUrl();
+      const publicUrl = `${baseUrl}/${device.deviceFile}`;
+
+      return {
+        success: true,
+        deviceId: device.id,
+        serialNumber: device.serialNumber,
+        deviceFile: device.deviceFile,
+        deviceFileName: device.deviceFileName,
+        isModified: device.isModified,
+        publicUrl: publicUrl
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+
+
 
   /**
    * Delete device file
@@ -944,6 +999,40 @@ class DeviceService {
       throw error;
     }
   }
+
+
+  async downloadDeviceFileBySerial(serialNumber) {
+    try {
+      const device = await Device.findOne({
+        where: { serialNumber },
+        attributes: ["id", "deviceFile", "deviceFileName"]
+      });
+
+      if (!device) {
+        throw new Error("Device not found with the provided serial number");
+      }
+
+      if (!device.deviceFile) {
+        throw new Error("No file available for download");
+      }
+
+      const filePath = path.join(__dirname, '..', device.deviceFile);
+
+      if (!fs.existsSync(filePath)) {
+        throw new Error("File not found in storage");
+      }
+
+      return {
+        success: true,
+        filePath: filePath,
+        fileName: device.deviceFileName || 'device_file.txt'
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+
   // ============== EXTRA DATA METHODS ==============
 
   /**
