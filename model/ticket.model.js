@@ -169,13 +169,11 @@ const Ticket = sequelize.define(
       field: "read_at",
     },
     readBy: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.JSON,
       allowNull: true,
+      defaultValue: [],
       field: "read_by",
-      references: {
-        model: "user",
-        key: "id",
-      },
+     
     },
     createdAt: {
       type: DataTypes.DATE,

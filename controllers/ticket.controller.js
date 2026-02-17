@@ -450,9 +450,8 @@ const getTicketById = async (req, res) => {
 const markTicketAsRead = async (req, res) => {
   try {
     const { id } = req.params;
-    const { readBy } = req.body;
+    const { readBy } = req.body; // userId of who is reading
 
-    // Determine if the id is a numeric ID or a ticketId
     const isNumericId = !isNaN(id) && Number.isInteger(Number(id));
     const whereClause = isNumericId ? { id: parseInt(id) } : { ticketId: id };
 
@@ -465,33 +464,55 @@ const markTicketAsRead = async (req, res) => {
       });
     }
 
-    // Only update if not already read
-    if (!ticket.isRead) {
+    if (!readBy) {
+      return res.status(400).json({
+        success: false,
+        message: "readBy (userId) is required",
+      });
+    }
+
+    const userId = parseInt(readBy);
+
+    // ✅ Get current readBy array (or empty array)
+    const currentReadBy = Array.isArray(ticket.readBy) ? ticket.readBy : [];
+
+    // ✅ Only append if user hasn't already read it
+    const alreadyRead = currentReadBy.includes(userId);
+
+    if (!alreadyRead) {
+      const updatedReadBy = [...currentReadBy, userId];
+
       await ticket.update({
-        isRead: true,
-        readAt: new Date(),
-        readBy: readBy || null,
+        isRead: true,              // ✅ Mark as read
+        readAt: new Date(),        // ✅ Update read time
+        readBy: updatedReadBy,     // ✅ Append userId to array
       });
 
       // Log the action
       await logTicketAction(
         ticket.id,
-        readBy,
+        userId,
         "Read",
-        false,
-        true,
+        currentReadBy,
+        updatedReadBy,
         req,
-        "Ticket marked as read"
+        `Ticket marked as read by user ${userId}`
       );
     }
 
+    // Fetch updated ticket
+    const updatedTicket = await Ticket.findOne({ where: whereClause });
+
     res.json({
       success: true,
-      message: "Ticket marked as read",
+      message: alreadyRead
+        ? `Ticket already read by user ${userId}`
+        : `Ticket marked as read by user ${userId}`,
       data: {
-        isRead: ticket.isRead,
-        readAt: ticket.readAt,
-        readBy: ticket.readBy,
+        isRead: updatedTicket.isRead,
+        readAt: updatedTicket.readAt,
+        readBy: updatedTicket.readBy,        // ✅ Returns full array
+        totalReaders: updatedTicket.readBy?.length || 0,  // ✅ Bonus: total count
       },
     });
   } catch (error) {
@@ -503,6 +524,7 @@ const markTicketAsRead = async (req, res) => {
     });
   }
 };
+
 
 
 // Update ticket
