@@ -126,7 +126,7 @@ const getQueries = async (req, res) => {
         attributes: ['id']
       });
       const userTicketIds = userTickets.map(t => t.id);
-      
+
       if (userTicketIds.length > 0) {
         where.ticketId = { [Op.in]: userTicketIds };
       } else {
@@ -164,27 +164,27 @@ const getQueries = async (req, res) => {
     const { count, rows } = await Query.findAndCountAll({
       where,
       include: [
-        { 
-          model: User, 
-          as: "user", 
+        {
+          model: User,
+          as: "user",
           attributes: ["id", "username", "email"],
           required: false
         },
-        { 
-          model: User, 
-          as: "resolver", 
+        {
+          model: User,
+          as: "resolver",
           attributes: ["id", "username", "email"],
           required: false
         },
-        { 
-          model: Ticket, 
-          as: "ticket", 
+        {
+          model: Ticket,
+          as: "ticket",
           attributes: ["id", "ticketId", "title", "ticketStatus"],
           required: false
         },
-        { 
-          model: Query, 
-          as: "parentQuery", 
+        {
+          model: Query,
+          as: "parentQuery",
           attributes: ["id", "title"],
           required: false
         },
@@ -230,27 +230,27 @@ const getQueryById = async (req, res) => {
 
     const query = await Query.findByPk(id, {
       include: [
-        { 
-          model: User, 
-          as: "user", 
+        {
+          model: User,
+          as: "user",
           attributes: ["id", "username", "email", "mobile_no"],
           required: false
         },
-        { 
-          model: User, 
-          as: "resolver", 
+        {
+          model: User,
+          as: "resolver",
           attributes: ["id", "username", "email"],
           required: false
         },
-        { 
-          model: Ticket, 
-          as: "ticket", 
+        {
+          model: Ticket,
+          as: "ticket",
           attributes: ["id", "ticketId", "title", "ticketStatus", "userId"],
           required: false
         },
-        { 
-          model: Query, 
-          as: "parentQuery", 
+        {
+          model: Query,
+          as: "parentQuery",
           attributes: ["id", "title", "description"],
           required: false
         },
@@ -259,9 +259,9 @@ const getQueryById = async (req, res) => {
           as: "childQueries",
           required: false,
           include: [
-            { 
-              model: User, 
-              as: "user", 
+            {
+              model: User,
+              as: "user",
               attributes: ["id", "username", "email"],
               required: false
             },
@@ -273,9 +273,9 @@ const getQueryById = async (req, res) => {
           as: "logs",
           required: false,
           include: [
-            { 
-              model: User, 
-              as: "user", 
+            {
+              model: User,
+              as: "user",
               attributes: ["id", "username", "email"],
               required: false
             }
@@ -321,16 +321,43 @@ const markQueryAsRead = async (req, res) => {
     const { id } = req.params;
     const { readBy } = req.body;
 
+    // ✅ Validate readBy is provided
+    if (!readBy) {
+      return res.status(400).json({
+        success: false,
+        message: "readBy (userId) is required",
+      });
+    }
+
+    const userId = parseInt(readBy);
+
+    // ✅ Validate userId is a valid number
+    if (isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "readBy must be a valid user ID (number)",
+      });
+    }
+
+    // ✅ Validate user exists in database
+    const userExists = await User.findByPk(userId);
+    if (!userExists) {
+      return res.status(404).json({
+        success: false,
+        message: `Invalid readBy: User with ID ${userId} does not exist`,
+      });
+    }
+
     const query = await Query.findByPk(id, {
       include: [
-        { 
-          model: Ticket, 
-          as: "ticket", 
+        {
+          model: Ticket,
+          as: "ticket",
           attributes: ["id", "userId"]
         }
       ]
     });
-    
+
     if (!query) {
       return res.status(404).json({
         success: false,
@@ -346,34 +373,42 @@ const markQueryAsRead = async (req, res) => {
       });
     }
 
-    // Only update if not already read
-    if (!query.isRead) {
+    const currentReadBy = Array.isArray(query.readBy) ? query.readBy : [];
+    const alreadyRead = currentReadBy.includes(userId);
+
+    if (!alreadyRead) {
+      const updatedReadBy = [...currentReadBy, userId];
+
       await query.update({
         isRead: true,
         readAt: new Date(),
-        readBy: readBy || req.user.id,
+        readBy: updatedReadBy,
       });
 
-      // Log the action
       await logQueryAction(
         query.id,
         query.ticketId,
-        readBy || req.user.id,
+        userId,
         "Read",
-        false,
-        true,
+        currentReadBy,
+        updatedReadBy,
         req,
-        "Query marked as read"
+        `Query marked as read by user ${userId}`
       );
     }
 
+    const updatedQuery = await Query.findByPk(id);
+
     res.json({
       success: true,
-      message: "Query marked as read",
+      message: alreadyRead
+        ? `Query already read by user ${userId}`
+        : `Query marked as read by user ${userId}`,
       data: {
-        isRead: query.isRead,
-        readAt: query.readAt,
-        readBy: query.readBy,
+        isRead: updatedQuery.isRead,
+        readAt: updatedQuery.readAt,
+        readBy: updatedQuery.readBy,
+        totalReaders: updatedQuery.readBy?.length || 0,
       },
     });
   } catch (error) {
@@ -385,6 +420,7 @@ const markQueryAsRead = async (req, res) => {
     });
   }
 };
+
 
 // Update query (Admin only)
 const updateQuery = async (req, res) => {
@@ -521,9 +557,9 @@ const getQueryHistory = async (req, res) => {
     // Check if query exists and user has access
     const query = await Query.findByPk(id, {
       include: [
-        { 
-          model: Ticket, 
-          as: "ticket", 
+        {
+          model: Ticket,
+          as: "ticket",
           attributes: ["id", "userId"]
         }
       ]

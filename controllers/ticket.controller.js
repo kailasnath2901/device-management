@@ -450,7 +450,34 @@ const getTicketById = async (req, res) => {
 const markTicketAsRead = async (req, res) => {
   try {
     const { id } = req.params;
-    const { readBy } = req.body; // userId of who is reading
+    const { readBy } = req.body;
+
+    // ✅ Validate readBy is provided
+    if (!readBy) {
+      return res.status(400).json({
+        success: false,
+        message: "readBy (userId) is required",
+      });
+    }
+
+    const userId = parseInt(readBy);
+
+    // ✅ Validate userId is a valid number
+    if (isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "readBy must be a valid user ID (number)",
+      });
+    }
+
+    // ✅ Validate user exists in database
+    const userExists = await User.findByPk(userId);
+    if (!userExists) {
+      return res.status(404).json({
+        success: false,
+        message: `Invalid readBy: User with ID ${userId} does not exist`,
+      });
+    }
 
     const isNumericId = !isNaN(id) && Number.isInteger(Number(id));
     const whereClause = isNumericId ? { id: parseInt(id) } : { ticketId: id };
@@ -464,31 +491,18 @@ const markTicketAsRead = async (req, res) => {
       });
     }
 
-    if (!readBy) {
-      return res.status(400).json({
-        success: false,
-        message: "readBy (userId) is required",
-      });
-    }
-
-    const userId = parseInt(readBy);
-
-    // ✅ Get current readBy array (or empty array)
     const currentReadBy = Array.isArray(ticket.readBy) ? ticket.readBy : [];
-
-    // ✅ Only append if user hasn't already read it
     const alreadyRead = currentReadBy.includes(userId);
 
     if (!alreadyRead) {
       const updatedReadBy = [...currentReadBy, userId];
 
       await ticket.update({
-        isRead: true,              // ✅ Mark as read
-        readAt: new Date(),        // ✅ Update read time
-        readBy: updatedReadBy,     // ✅ Append userId to array
+        isRead: true,
+        readAt: new Date(),
+        readBy: updatedReadBy,
       });
 
-      // Log the action
       await logTicketAction(
         ticket.id,
         userId,
@@ -500,7 +514,6 @@ const markTicketAsRead = async (req, res) => {
       );
     }
 
-    // Fetch updated ticket
     const updatedTicket = await Ticket.findOne({ where: whereClause });
 
     res.json({
@@ -511,8 +524,8 @@ const markTicketAsRead = async (req, res) => {
       data: {
         isRead: updatedTicket.isRead,
         readAt: updatedTicket.readAt,
-        readBy: updatedTicket.readBy,        // ✅ Returns full array
-        totalReaders: updatedTicket.readBy?.length || 0,  // ✅ Bonus: total count
+        readBy: updatedTicket.readBy,
+        totalReaders: updatedTicket.readBy?.length || 0,
       },
     });
   } catch (error) {
@@ -524,6 +537,7 @@ const markTicketAsRead = async (req, res) => {
     });
   }
 };
+
 
 
 
