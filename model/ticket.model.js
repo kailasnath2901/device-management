@@ -30,7 +30,7 @@ const Ticket = sequelize.define(
       allowNull: true,
       field: "device_id",
       references: {
-        model: "devices",
+        model: "device",
         key: "id",
       },
     },
